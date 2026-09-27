@@ -9,15 +9,21 @@ public final class ContactLookup {
     private ContactLookup() {}
 
     public static boolean isKnown(Context context, String number) {
-        if (number == null || number.isEmpty()) return false;
+        return !findName(context,number).isEmpty();
+    }
+
+    public static String findName(Context context,String number){
+        if (number == null || number.isEmpty()) return "";
         Uri uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number));
         try (Cursor cursor = context.getContentResolver().query(
                 uri,
-                new String[]{ContactsContract.PhoneLookup._ID},
+                new String[]{ContactsContract.PhoneLookup.DISPLAY_NAME},
                 null, null, null)) {
-            return cursor != null && cursor.moveToFirst();
-        } catch (SecurityException ex) {
-            return false;
-        }
+            if (cursor != null && cursor.moveToFirst()) {
+                String name=cursor.getString(0);
+                return name==null?"":name;
+            }
+        } catch (Throwable ignored) { }
+        return "";
     }
 }
