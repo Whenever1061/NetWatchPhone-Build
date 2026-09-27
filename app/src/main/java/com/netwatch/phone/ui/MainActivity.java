@@ -20,9 +20,11 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import com.netwatch.phone.BuildConfig;
 import com.netwatch.phone.config.AppConfig;
 import com.netwatch.phone.update.GitHubUpdater;
+
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -34,12 +36,14 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
     private static final int ROLE_SCREEN_REQ = 1002;
     private static final int PERM_CORE_REQ = 1003;
     private static final int PERM_DIALER_REQ = 1004;
+    private static final int CONTACT_SEARCH_REQ = 1005;
+
     private GlassPhoneView phoneView;
+    private String pendingNumber;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         configureWindowSafely();
-
         try {
             phoneView = new GlassPhoneView(this, this);
             setContentView(phoneView);
@@ -47,13 +51,11 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
             showEmergencyUi(fatalUi);
             return;
         }
-
         handleDialIntent(getIntent());
-
         phoneView.postDelayed(() -> {
             requestCorePermissionsSafely();
             refreshDeviceDataSafely();
-        }, 450);
+        }, 400);
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -64,7 +66,7 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
 
     @Override protected void onResume() {
         super.onResume();
-        if (phoneView != null) phoneView.postDelayed(this::refreshDeviceDataSafely, 150);
+        if (phoneView != null) phoneView.postDelayed(this::refreshDeviceDataSafely, 120);
     }
 
     private void configureWindowSafely() {
@@ -81,21 +83,17 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
         int p = dp(24);
         root.setPadding(p, p, p, p);
         root.setBackgroundColor(Color.rgb(8, 20, 34));
-
         TextView title = new TextView(this);
         title.setText("NetWatch Phone");
         title.setTextColor(Color.WHITE);
         title.setTextSize(28);
         root.addView(title);
-
         TextView msg = new TextView(this);
-        msg.setText("Safe mode loaded. The glass renderer hit an error, but the app stayed open.\n\n"
-                + problem.getClass().getSimpleName() + ": " + String.valueOf(problem.getMessage()));
+        msg.setText("Safe mode loaded.\n\n" + problem.getClass().getSimpleName() + ": " + String.valueOf(problem.getMessage()));
         msg.setTextColor(0xFFD6E8FA);
         msg.setTextSize(15);
         msg.setPadding(0, dp(18), 0, dp(18));
         root.addView(msg);
-
         Button settings = new Button(this);
         settings.setText("Open NetWatch settings");
         settings.setOnClickListener(v -> openSettings());
@@ -112,18 +110,43 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
     }
 
     @Override public void placeCall(String rawNumber) {
-        String n = rawNumber == null ? "" : rawNumber.trim();
-        if (n.isEmpty()) return;
+        final String number = rawNumber == null ? "" : rawNumber.trim();
+        if (number.isEmpty()) return;
+
+        if (!holdsDialerRole()) {
+            pendingNumber = number;
+            Toast.makeText(this, "Make NetWatch the default phone app so the call stays inside NetWatch.", Toast.LENGTH_LONG).show();
+            requestRoleSafely(RoleManager.ROLE_DIALER, ROLE_DIALER_REQ);
+            return;
+        }
+
+        if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
+            pendingNumber = number;
+            requestCorePermissionsSafely();
+            return;
+        }
+
         try {
-            if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
-                requestCorePermissionsSafely();
-                Toast.makeText(this, "Allow Phone permission, then tap Call again.", Toast.LENGTH_SHORT).show();
-                return;
-            }
             TelecomManager tm = (TelecomManager) getSystemService(TELECOM_SERVICE);
-            if (tm != null) tm.placeCall(Uri.fromParts("tel", n, null), new Bundle());
+            if (tm == null) throw new IllegalStateException("Android Telecom is unavailable");
+            Bundle extras = new Bundle();
+            extras.putBoolean("netwatch_origin", true);
+            tm.placeCall(Uri.fromParts("tel", number, null), extras);
         } catch (Throwable error) {
             Toast.makeText(this, "Could not place call: " + shortMessage(error), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override public void openContactSearch() {
+        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+            requestCorePermissionsSafely();
+            Toast.makeText(this, "Allow Contacts permission, then tap Search again.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            startActivityForResult(new Intent(this, ContactSearchActivity.class), CONTACT_SEARCH_REQ);
+        } catch (Throwable error) {
+            Toast.makeText(this, "Could not open contact search: " + shortMessage(error), Toast.LENGTH_LONG).show();
         }
     }
 
@@ -137,6 +160,11 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
         version.setText("NetWatch Phone " + BuildConfig.VERSION_NAME + "\nSigned GitHub update channel");
         version.setPadding(0, 0, 0, pad / 2);
         box.addView(version, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView dialerState = new TextView(this);
+        dialerState.setText(holdsDialerRole() ? "✓ NetWatch is the default phone app" : "⚠ NetWatch is not the default phone app");
+        dialerState.setPadding(0, 0, 0, pad / 2);
+        box.addView(dialerState, new LinearLayout.LayoutParams(-1, -2));
 
         EditText api = new EditText(this);
         api.setSingleLine(true);
@@ -227,15 +255,35 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == ROLE_DIALER_REQ && holdsDialerRole()) {
-            requestDialerPermissionsSafely();
-            refreshDeviceDataSafely();
+        if (requestCode == ROLE_DIALER_REQ) {
+            if (holdsDialerRole()) {
+                requestDialerPermissionsSafely();
+                refreshDeviceDataSafely();
+                final String n = pendingNumber;
+                pendingNumber = null;
+                if (n != null && !n.isEmpty()) phoneView.postDelayed(() -> placeCall(n), 300);
+            } else {
+                pendingNumber = null;
+                Toast.makeText(this, "NetWatch was not selected as the default phone app, so the call was not handed to Google Phone.", Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
+        if (requestCode == CONTACT_SEARCH_REQ && resultCode == RESULT_OK && data != null) {
+            String number = data.getStringExtra(ContactSearchActivity.RESULT_NUMBER);
+            if (number != null && !number.trim().isEmpty()) placeCall(number);
         }
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == PERM_CORE_REQ || requestCode == PERM_DIALER_REQ) refreshDeviceDataSafely();
+        if (requestCode == PERM_CORE_REQ || requestCode == PERM_DIALER_REQ) {
+            refreshDeviceDataSafely();
+            if (pendingNumber != null && holdsDialerRole() && checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
+                String n = pendingNumber;
+                pendingNumber = null;
+                placeCall(n);
+            }
+        }
     }
 
     private void refreshDeviceDataSafely() {
@@ -247,14 +295,14 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
     private List<GlassPhoneView.RecentCall> readRecentCalls() {
         List<GlassPhoneView.RecentCall> out = new ArrayList<>();
         if (checkSelfPermission(Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) return out;
-        String[] projection = {CallLog.Calls.NUMBER, CallLog.Calls.CACHED_NAME, CallLog.Calls.TYPE, CallLog.Calls.DATE};
+        String[] projection = { CallLog.Calls.NUMBER, CallLog.Calls.CACHED_NAME, CallLog.Calls.TYPE, CallLog.Calls.DATE };
         try (Cursor c = getContentResolver().query(CallLog.Calls.CONTENT_URI, projection, null, null, CallLog.Calls.DATE + " DESC")) {
             if (c == null) return out;
             int numberCol = c.getColumnIndexOrThrow(CallLog.Calls.NUMBER);
             int nameCol = c.getColumnIndexOrThrow(CallLog.Calls.CACHED_NAME);
             int typeCol = c.getColumnIndexOrThrow(CallLog.Calls.TYPE);
             int dateCol = c.getColumnIndexOrThrow(CallLog.Calls.DATE);
-            while (c.moveToNext() && out.size() < 14) {
+            while (c.moveToNext() && out.size() < 100) {
                 String number = c.getString(numberCol);
                 String name = c.getString(nameCol);
                 int type = c.getInt(typeCol);
@@ -270,15 +318,16 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
     private List<GlassPhoneView.ContactItem> readContacts() {
         List<GlassPhoneView.ContactItem> out = new ArrayList<>();
         if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return out;
-        String[] projection = {ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER};
+        String[] projection = { ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER };
         try (Cursor c = getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
                 projection, null, null, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " COLLATE NOCASE ASC")) {
             if (c == null) return out;
             int nameCol = c.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);
             int numberCol = c.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER);
             String last = null;
-            while (c.moveToNext() && out.size() < 40) {
-                String name = c.getString(nameCol), number = c.getString(numberCol);
+            while (c.moveToNext()) {
+                String name = c.getString(nameCol);
+                String number = c.getString(numberCol);
                 if (name == null || number == null) continue;
                 String key = name + "|" + number;
                 if (key.equals(last)) continue;
@@ -294,7 +343,7 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
         if (age >= 0 && age < 24L * 60L * 60L * 1000L)
             return new SimpleDateFormat("h:mm a", Locale.getDefault()).format(new Date(millis));
         if (age >= 0 && age < 48L * 60L * 60L * 1000L) return "Yesterday";
-        return new SimpleDateFormat("EEE", Locale.getDefault()).format(new Date(millis));
+        return new SimpleDateFormat("MMM d", Locale.getDefault()).format(new Date(millis));
     }
 
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
