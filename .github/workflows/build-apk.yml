@@ -78,7 +78,7 @@ jobs:
             "version_name": "${{ steps.version.outputs.name }}",
             "apk_url": "https://github.com/Whenever1061/NetWatchPhone-Build/releases/download/netwatch-latest/NetWatchPhone.apk",
             "sha256": "$SHA",
-            "notes": "NetWatch Phone 0.7.2 restores the Sandia Mountains as a clearly visible portrait background and adds a five-sound NetWatch ringtone pack with in-app preview and selection. Recent-call deletion, caller profiles, calling, contacts, screening, weather, and signed updates remain intact."
+            "notes": "NetWatch Phone 0.7.3 makes Albuquerque and the Sandias clearer through lighter glass, adds saved contact photos to contact and recent-call tiles, strengthens the blue-gold scrolling glow, replaces the old default ringtone with the cleaner Clear Horizon cadence, and adds Curated by Ricky credit."
           }
           EOF
 
@@ -92,7 +92,7 @@ jobs:
           git push -f origin refs/tags/netwatch-latest
           gh release create netwatch-latest NetWatchPhone.apk update.json \
             --title "NetWatch Phone ${{ steps.version.outputs.name }}" \
-            --notes "Signed NetWatch Phone 0.7.2 release: portrait Sandia background, lighter photographic glass, and a five-sound local ringtone pack with preview and selection."
+            --notes "Signed NetWatch Phone 0.7.3 release — curated by Ricky. Clearer Sandia glass, contact photos in moving tiles, stronger glow, and the new Clear Horizon default ringtone."
 
       - name: Build preview APK when signing is not configured
         if: steps.signing.outputs.configured != 'true'
