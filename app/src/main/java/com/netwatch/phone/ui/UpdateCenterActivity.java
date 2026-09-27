@@ -2,6 +2,7 @@ package com.netwatch.phone.ui;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -12,6 +13,7 @@ import android.view.Gravity;
 import android.widget.*;
 import com.netwatch.phone.BuildConfig;
 import com.netwatch.phone.R;
+import com.netwatch.phone.telecom.NetWatchRinger;
 import com.netwatch.phone.update.GitHubUpdater;
 import org.json.JSONObject;
 import java.io.*;
@@ -45,7 +47,7 @@ public final class UpdateCenterActivity extends Activity {
         bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
         frame.addView(bg,new FrameLayout.LayoutParams(-1,-1));
         android.view.View shade=new android.view.View(this);
-        shade.setBackgroundColor(0xC9071522);
+        shade.setBackgroundColor(0x66071522);
         frame.addView(shade,new FrameLayout.LayoutParams(-1,-1));
 
         ScrollView scroll=new ScrollView(this);
@@ -94,20 +96,26 @@ public final class UpdateCenterActivity extends Activity {
         root.addView(notes,cardParams());
 
         LinearLayout identity=card();
-        identity.addView(iconTitle(R.drawable.ic_netwatch_launcher,"NetWatch 0.7 visual overhaul"));
-        identity.addView(bullet("Real Albuquerque / Sandia Mountains background installed throughout the phone UI"));
-        identity.addView(bullet("New NetWatch shield-and-phone launcher identity replaces the generic Android icon"));
-        identity.addView(bullet("Complete matching icon system for calls, contacts, keypad, updates, privacy, sound, weather and more"));
-        identity.addView(bullet("Local DTMF keypad tones with normal phone-style touch feedback"));
-        identity.addView(bullet("Single-contact gold focus behavior retained with smoother glass presentation"));
+        identity.addView(iconTitle(R.drawable.ic_netwatch_launcher,"NetWatch visual & sound system"));
+        identity.addView(bullet("Portrait Sandia / Albuquerque background now fills phone screens without losing the mountain scene"));
+        identity.addView(bullet("Lighter glass overlays keep the photograph visible behind NetWatch controls"));
+        identity.addView(bullet("Five local NetWatch ringtones can be previewed and selected without cloud audio"));
+        identity.addView(bullet("Caller profiles and individual recent-call deletion remain built in"));
         root.addView(identity,cardParams());
+
+        Button tones=new Button(this);
+        tones.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_sound,0,0,0);
+        tones.setCompoundDrawablePadding(dp(10));
+        tones.setText("RINGTONE PACK  •  "+NetWatchRinger.selectedName(this).toUpperCase(Locale.getDefault()));
+        tones.setOnClickListener(v->startActivity(new Intent(this,RingtonePackActivity.class)));
+        root.addView(tones,new LinearLayout.LayoutParams(-1,dp(58)));
 
         checkButton=new Button(this);
         checkButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_update,0,0,0);
         checkButton.setCompoundDrawablePadding(dp(10));
         checkButton.setText("CHECK FOR UPDATE");
         checkButton.setOnClickListener(v->refresh(true));
-        root.addView(checkButton,new LinearLayout.LayoutParams(-1,dp(58)));
+        LinearLayout.LayoutParams cb=new LinearLayout.LayoutParams(-1,dp(58));cb.topMargin=dp(8);root.addView(checkButton,cb);
 
         installButton=new Button(this);
         installButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_download,0,0,0);
@@ -123,6 +131,8 @@ public final class UpdateCenterActivity extends Activity {
         setContentView(frame);
         refresh(false);
     }
+
+    @Override protected void onResume(){super.onResume();}
 
     private void refresh(boolean user){
         checkButton.setEnabled(false);
@@ -151,7 +161,7 @@ public final class UpdateCenterActivity extends Activity {
                     integrity.setText(sha.length()==64?"Manifest SHA-256 present ✓":"Manifest integrity field missing");
                     boolean newer=remoteCode>BuildConfig.VERSION_CODE;
                     status.setText(newer?"Update available":"NetWatch Phone is current");
-                    releaseNotes.setText(notes.isEmpty()?"NetWatch 0.7 refreshes the phone identity, Sandia background, icon system and dialer feedback.":notes);
+                    releaseNotes.setText(notes.isEmpty()?"NetWatch refreshes the Sandia background and adds the local ringtone pack.":notes);
                     installButton.setEnabled(newer);
                     checkButton.setEnabled(true);
                     if(user)Toast.makeText(this,newer?"NetWatch "+remoteName+" is available":"You are current",Toast.LENGTH_LONG).show();
