@@ -34,8 +34,10 @@ public final class CallScreenActivity extends Activity {
     private boolean incoming;
     private CallerIntel intel;
 
-    private TextView stateText,numberText,nameText,intelText,statusText;
-    private Button answerButton,screenButton,declineButton,muteButton,speakerButton,saveButton;
+    private TextView stateText,numberText,nameText,intelText,statusText,dtmfText;
+    private Button answerButton,screenButton,declineButton,muteButton,speakerButton,keypadButton,saveButton,backToCallButton;
+    private LinearLayout activeControls,dtmfPanel,aiCard;
+    private final StringBuilder dtmfDigits=new StringBuilder();
     private String pendingSaveName="";
 
     private final Runnable poll=new Runnable(){
@@ -72,6 +74,11 @@ public final class CallScreenActivity extends Activity {
         runIntel();
     }
 
+    @Override protected void onNewIntent(android.content.Intent intent){
+        super.onNewIntent(intent);setIntent(intent);
+        String n=intent.getStringExtra("number");if(n!=null&&!n.isEmpty()){number=n;if(numberText!=null)numberText.setText(n);runIntel();}
+    }
+
     private View buildUi(){
         FrameLayout root=new FrameLayout(this);
 
@@ -85,6 +92,7 @@ public final class CallScreenActivity extends Activity {
         shade.setBackground(shadeBg);root.addView(shade,new FrameLayout.LayoutParams(-1,-1));
 
         ScrollView scroll=new ScrollView(this);
+        scroll.setFillViewport(true);
         LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setGravity(Gravity.CENTER_HORIZONTAL);content.setPadding(dp(20),dp(22),dp(20),dp(28));
         scroll.addView(content);root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
 
@@ -100,28 +108,74 @@ public final class CallScreenActivity extends Activity {
         numberText=text(number,17,0xFFE2EBF4,false);numberText.setGravity(Gravity.CENTER);identity.addView(numberText);
         intelText=text("NetWatch is checking local contacts, call history and your configured contact center.",12,0xFFC6D7E6,false);intelText.setGravity(Gravity.CENTER);intelText.setPadding(0,dp(10),0,0);identity.addView(intelText);
 
-        LinearLayout ai=card();content.addView(ai,cardParams());
-        TextView aiTitle=text("✦  NetWatch AI caller checker",15,Color.WHITE,true);ai.addView(aiTitle);
-        statusText=text("Looking for identity, location and risk signals…",13,0xFFE1ECF5,false);statusText.setPadding(0,dp(8),0,0);ai.addView(statusText);
+        aiCard=card();content.addView(aiCard,cardParams());
+        TextView aiTitle=text("✦  NetWatch AI caller checker",15,Color.WHITE,true);aiCard.addView(aiTitle);
+        statusText=text("Looking for identity, location and risk signals…",13,0xFFE1ECF5,false);statusText.setPadding(0,dp(8),0,0);aiCard.addView(statusText);
 
         saveButton=new Button(this);saveButton.setText("SAVE / CORRECT CALLER");
         saveButton.setVisibility(View.GONE);saveButton.setOnClickListener(v->promptSave());
-        LinearLayout.LayoutParams sb=new LinearLayout.LayoutParams(-1,dp(52));sb.topMargin=dp(10);ai.addView(saveButton,sb);
+        LinearLayout.LayoutParams sb=new LinearLayout.LayoutParams(-1,dp(52));sb.topMargin=dp(10);aiCard.addView(saveButton,sb);
 
-        LinearLayout actions=new LinearLayout(this);actions.setOrientation(LinearLayout.HORIZONTAL);actions.setGravity(Gravity.CENTER);actions.setPadding(0,dp(8),0,dp(12));
+        LinearLayout primary=new LinearLayout(this);primary.setOrientation(LinearLayout.HORIZONTAL);primary.setGravity(Gravity.CENTER);primary.setPadding(0,dp(8),0,dp(10));
         answerButton=button("ANSWER",0xFF1FAE57);answerButton.setOnClickListener(v->answer());
         screenButton=button("SCREEN",0xFF2C76CB);screenButton.setOnClickListener(v->screen());
         declineButton=button("DECLINE",0xFFD64351);declineButton.setOnClickListener(v->declineOrEnd());
-        actions.addView(answerButton,actionParams());actions.addView(screenButton,actionParams());actions.addView(declineButton,actionParams());
-        content.addView(actions,new LinearLayout.LayoutParams(-1,-2));
+        primary.addView(answerButton,actionParams());primary.addView(screenButton,actionParams());primary.addView(declineButton,actionParams());
+        content.addView(primary,new LinearLayout.LayoutParams(-1,-2));
 
-        LinearLayout active=new LinearLayout(this);active.setOrientation(LinearLayout.HORIZONTAL);active.setGravity(Gravity.CENTER);
-        muteButton=button("MUTE",0x554F7797);muteButton.setOnClickListener(v->{boolean m=NetWatchInCallService.toggleMute();muteButton.setText(m?"UNMUTE":"MUTE");});
-        speakerButton=button("SPEAKER",0x554F7797);speakerButton.setOnClickListener(v->{boolean s=NetWatchInCallService.toggleSpeaker();speakerButton.setText(s?"EARPIECE":"SPEAKER");});
-        active.addView(muteButton,actionParams());active.addView(speakerButton,actionParams());
-        content.addView(active,new LinearLayout.LayoutParams(-1,-2));
+        activeControls=new LinearLayout(this);activeControls.setOrientation(LinearLayout.HORIZONTAL);activeControls.setGravity(Gravity.CENTER);
+        muteButton=button("MUTE",0x664F7797);muteButton.setOnClickListener(v->{boolean m=NetWatchInCallService.toggleMute();muteButton.setText(m?"UNMUTE":"MUTE");});
+        keypadButton=button("KEYPAD",0x665687B0);keypadButton.setOnClickListener(v->showDtmfPanel(true));
+        speakerButton=button("SPEAKER",0x664F7797);speakerButton.setOnClickListener(v->{boolean s=NetWatchInCallService.toggleSpeaker();speakerButton.setText(s?"EARPIECE":"SPEAKER");});
+        activeControls.addView(muteButton,actionParams());activeControls.addView(keypadButton,actionParams());activeControls.addView(speakerButton,actionParams());
+        content.addView(activeControls,new LinearLayout.LayoutParams(-1,-2));
+
+        dtmfPanel=buildDtmfPanel();
+        dtmfPanel.setVisibility(View.GONE);
+        content.addView(dtmfPanel,cardParams());
+
+        TextView restoreHint=text("If you leave this screen during a call, open NetWatch Phone again — it will return directly to these live call controls.",11.5f,0xFF9FB7CA,false);
+        restoreHint.setGravity(Gravity.CENTER);restoreHint.setPadding(dp(10),dp(10),dp(10),0);content.addView(restoreHint);
 
         return root;
+    }
+
+    private LinearLayout buildDtmfPanel(){
+        LinearLayout panel=card();panel.setGravity(Gravity.CENTER_HORIZONTAL);
+        TextView title=text("Bank / automated menu keypad",15,Color.WHITE,true);title.setGravity(Gravity.CENTER);panel.addView(title);
+        dtmfText=text("",22,0xFFFFD37C,true);dtmfText.setGravity(Gravity.CENTER);dtmfText.setPadding(0,dp(5),0,dp(8));panel.addView(dtmfText,new LinearLayout.LayoutParams(-1,dp(45)));
+
+        String[] keys={"1","2","3","4","5","6","7","8","9","*","0","#"};
+        for(int r=0;r<4;r++){
+            LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setGravity(Gravity.CENTER);
+            for(int c=0;c<3;c++){
+                final char digit=keys[r*3+c].charAt(0);
+                Button b=button(String.valueOf(digit),0x554C708F);
+                b.setTextSize(24);b.setOnClickListener(v->sendDtmf(digit));
+                LinearLayout.LayoutParams kp=new LinearLayout.LayoutParams(0,dp(66),1f);kp.setMargins(dp(5),dp(5),dp(5),dp(5));row.addView(b,kp);
+            }
+            panel.addView(row,new LinearLayout.LayoutParams(-1,-2));
+        }
+
+        backToCallButton=button("BACK TO CALL CONTROLS",0x665687B0);
+        backToCallButton.setOnClickListener(v->showDtmfPanel(false));
+        LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(-1,dp(54));bp.topMargin=dp(9);panel.addView(backToCallButton,bp);
+        return panel;
+    }
+
+    private void sendDtmf(char digit){
+        if(NetWatchInCallService.sendDtmf(digit)){
+            dtmfDigits.append(digit);dtmfText.setText(dtmfDigits.toString());
+            statusText.setText("Sent DTMF “"+digit+"” to the automated phone menu.");
+        }else Toast.makeText(this,"The call is not ready for keypad tones yet",Toast.LENGTH_SHORT).show();
+    }
+
+    private void showDtmfPanel(boolean show){
+        if(incoming&&show)return;
+        dtmfPanel.setVisibility(show?View.VISIBLE:View.GONE);
+        activeControls.setVisibility(show?View.GONE:View.VISIBLE);
+        aiCard.setVisibility(show?View.GONE:View.VISIBLE);
+        keypadButton.setText("KEYPAD");
     }
 
     private void runIntel(){
@@ -194,7 +248,7 @@ public final class CallScreenActivity extends Activity {
             Toast.makeText(this,"Saved to contacts",Toast.LENGTH_LONG).show();
             nameText.setText(pendingSaveName);saveButton.setVisibility(View.GONE);
             if(AppConfig.isUsableContactCenter(this)){
-                final String n=number, name=pendingSaveName;
+                final String n=number,name=pendingSaveName;
                 executor.execute(()->{try{new ApiClient(this).saveCallerCorrection(n,name);}catch(Throwable ignored){}});
             }
         }catch(Throwable e){Toast.makeText(this,"Could not save contact: "+shortMessage(e),Toast.LENGTH_LONG).show();}
@@ -209,9 +263,11 @@ public final class CallScreenActivity extends Activity {
         boolean ringing=state==Call.STATE_RINGING;
         answerButton.setVisibility(ringing?View.VISIBLE:View.GONE);
         screenButton.setVisibility(ringing?View.VISIBLE:View.GONE);
-        declineButton.setText(ringing?"DECLINE":"END");
-        muteButton.setVisibility(ringing?View.GONE:View.VISIBLE);
-        speakerButton.setVisibility(ringing?View.GONE:View.VISIBLE);
+        declineButton.setText(ringing?"DECLINE":"END CALL");
+        activeControls.setVisibility(ringing?View.GONE:(dtmfPanel.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
+        if(ringing&&dtmfPanel.getVisibility()==View.VISIBLE)showDtmfPanel(false);
+        muteButton.setText(NetWatchInCallService.isMuted()?"UNMUTE":"MUTE");
+        speakerButton.setText(NetWatchInCallService.isSpeakerOn()?"EARPIECE":"SPEAKER");
     }
 
     private String stateText(int s){
