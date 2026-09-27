@@ -8,7 +8,7 @@ public final class NetWatchRinger {
     private static AudioTrack track;
     private NetWatchRinger(){}
 
-    public static synchronized void start(android.content.Context ignored){
+    public static synchronized void start(android.content.Context context){
         if(track!=null&&track.getPlayState()==AudioTrack.PLAYSTATE_PLAYING)return;
         stop();
         try{
@@ -55,7 +55,7 @@ public final class NetWatchRinger {
             a.setVolume(.82f);
             a.play();
             track=a;
-        }catch(Throwable ignored){stop();}
+        }catch(Throwable error){stop();}
     }
 
     public static synchronized void stop(){
