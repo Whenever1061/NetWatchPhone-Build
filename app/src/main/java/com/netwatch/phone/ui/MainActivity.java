@@ -7,12 +7,15 @@ import android.content.*;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Color;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.CallLog;
 import android.provider.ContactsContract;
 import android.provider.Settings;
 import android.telecom.TelecomManager;
+import android.view.MotionEvent;
 import android.view.Window;
 import android.widget.*;
 import com.netwatch.phone.BuildConfig;
@@ -31,22 +34,63 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
     private String pendingNumber="";
     private final ExecutorService executor=Executors.newCachedThreadPool();
     private WeatherSnapshot lastWeather=WeatherSnapshot.loading();
+    private ToneGenerator dialTone;
+    private boolean keypadSoundMode=false;
 
     @Override protected void onCreate(Bundle state){
         super.onCreate(state);
         configureWindow();
-        try{phoneView=new GlassPhoneView(this,this);setContentView(phoneView);}
-        catch(Throwable e){showEmergencyUi(e);return;}
+        try{
+            dialTone=new ToneGenerator(AudioManager.STREAM_DTMF,72);
+            phoneView=new GlassPhoneView(this,this);
+            phoneView.setOnTouchListener((v,e)->{maybePlayDialTone(e);return false;});
+            setContentView(phoneView);
+        }catch(Throwable e){showEmergencyUi(e);return;}
         handleDialIntent(getIntent());
         phoneView.postDelayed(()->{requestCorePermissionsSafely();refreshDeviceDataSafely();refreshWeather(false);},350);
     }
 
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);handleDialIntent(intent);}
     @Override protected void onResume(){super.onResume();if(phoneView!=null){phoneView.postDelayed(this::refreshDeviceDataSafely,120);phoneView.postDelayed(()->refreshWeather(false),220);}}
-    @Override protected void onDestroy(){executor.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){
+        executor.shutdownNow();
+        try{if(dialTone!=null){dialTone.stopTone();dialTone.release();dialTone=null;}}catch(Throwable ignored){}
+        super.onDestroy();
+    }
 
     private void configureWindow(){try{Window w=getWindow();w.setStatusBarColor(Color.rgb(5,15,27));w.setNavigationBarColor(Color.rgb(4,11,20));}catch(Throwable ignored){}}
-    private void handleDialIntent(Intent intent){if(intent==null||phoneView==null)return;Uri data=intent.getData();if(Intent.ACTION_DIAL.equals(intent.getAction())&&data!=null)phoneView.showKeypad(data.getSchemeSpecificPart());}
+    private void handleDialIntent(Intent intent){
+        if(intent==null||phoneView==null)return;
+        Uri data=intent.getData();
+        if(Intent.ACTION_DIAL.equals(intent.getAction())&&data!=null){keypadSoundMode=true;phoneView.showKeypad(data.getSchemeSpecificPart());}
+    }
+
+    private void maybePlayDialTone(MotionEvent e){
+        if(phoneView==null||e==null||e.getAction()!=MotionEvent.ACTION_UP)return;
+        float x=e.getX(),y=e.getY();
+        float h=phoneView.getHeight(),w=phoneView.getWidth();
+        float navTop=Math.max(dp(560),h-dp(92));
+        if(y>=navTop){
+            float slot=(w-dp(22))/4f;
+            int i=(int)((x-dp(11))/Math.max(1f,slot));
+            keypadSoundMode=i==3;
+            return;
+        }
+        if(!keypadSoundMode||dialTone==null)return;
+        float cx=w/2f,col=dp(111),startX=cx-col,startY=dp(286),row=dp(96);
+        int[] tones={ToneGenerator.TONE_DTMF_1,ToneGenerator.TONE_DTMF_2,ToneGenerator.TONE_DTMF_3,
+                ToneGenerator.TONE_DTMF_4,ToneGenerator.TONE_DTMF_5,ToneGenerator.TONE_DTMF_6,
+                ToneGenerator.TONE_DTMF_7,ToneGenerator.TONE_DTMF_8,ToneGenerator.TONE_DTMF_9,
+                ToneGenerator.TONE_DTMF_S,ToneGenerator.TONE_DTMF_0,ToneGenerator.TONE_DTMF_P};
+        for(int i=0;i<12;i++){
+            float kx=startX+(i%3)*col,ky=startY+(i/3)*row;
+            float dx=x-kx,dy=y-ky;
+            if(dx*dx+dy*dy<=dp(45)*dp(45)){
+                try{dialTone.stopTone();dialTone.startTone(tones[i],135);}catch(Throwable ignored){}
+                return;
+            }
+        }
+    }
 
     @Override public void placeCall(String raw){
         String n=raw==null?"":raw.trim();if(n.isEmpty())return;
@@ -89,11 +133,11 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
         int pad=dp(18);
         LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(pad,pad/2,pad,0);
 
-        ImageView logo=new ImageView(this);logo.setImageResource(com.netwatch.phone.R.drawable.netwatch_phone_icon);logo.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        LinearLayout.LayoutParams logoP=new LinearLayout.LayoutParams(dp(66),dp(66));logoP.gravity=android.view.Gravity.CENTER_HORIZONTAL;box.addView(logo,logoP);
+        ImageView logo=new ImageView(this);logo.setImageResource(com.netwatch.phone.R.drawable.ic_netwatch_launcher);logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        LinearLayout.LayoutParams logoP=new LinearLayout.LayoutParams(dp(74),dp(74));logoP.gravity=android.view.Gravity.CENTER_HORIZONTAL;box.addView(logo,logoP);
 
         TextView version=new TextView(this);
-        version.setText("NetWatch Phone "+BuildConfig.VERSION_NAME+"\nSignature Albuquerque glass • caller intelligence • animated focus");
+        version.setText("NetWatch Phone "+BuildConfig.VERSION_NAME+"\nSandia glass • NetWatch icon system • dial tones • caller intelligence");
         version.setGravity(android.view.Gravity.CENTER);version.setPadding(0,dp(8),0,pad/2);box.addView(version,new LinearLayout.LayoutParams(-1,-2));
 
         EditText api=new EditText(this);api.setSingleLine(true);api.setHint("Your contact-center API, e.g. http://192.168.1.20:8767");api.setText(AppConfig.getContactCenterUrl(this));box.addView(api,new LinearLayout.LayoutParams(-1,-2));
@@ -108,7 +152,7 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
         Button screening=new Button(this);screening.setText("Enable NetWatch call screening");screening.setOnClickListener(v->requestRoleSafely(RoleManager.ROLE_CALL_SCREENING,ROLE_SCREEN_REQ));box.addView(screening);
         Button appInfo=new Button(this);appInfo.setText("Open App Info / restricted settings");appInfo.setOnClickListener(v->openAppInfo());box.addView(appInfo);
 
-        new AlertDialog.Builder(this).setTitle("NetWatch Phone").setMessage("Phone → your API → your contact center. Weather sends only fixed Albuquerque city coordinates.")
+        new AlertDialog.Builder(this).setTitle("NetWatch Phone").setMessage("Phone → your API → your contact center. Dial-pad tones are generated locally. Weather sends only fixed Albuquerque city coordinates.")
                 .setView(box).setPositiveButton("Done",null).show();
     }
 
