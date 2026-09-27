@@ -78,7 +78,7 @@ jobs:
             "version_name": "${{ steps.version.outputs.name }}",
             "apk_url": "https://github.com/Whenever1061/NetWatchPhone-Build/releases/download/netwatch-latest/NetWatchPhone.apk",
             "sha256": "$SHA",
-            "notes": "NetWatch Phone 0.7.4 introduces true lens-style translucent call and contact bubbles that magnify the Sandia / Albuquerque background beneath them, makes the photo backdrop substantially clearer, adds reliable audible ringtone preview and incoming-call playback with the original Open Horizon melody, and identifies the app as Created by Ricky McElroy, NetWatch CEO. A NetWatch Website button is included as a disabled coming-soon placeholder."
+            "notes": "NetWatch Phone 0.7.5 focuses on speed and distribution. Contact and recent-call scrolling no longer highlights rows while you drag, expensive lens magnification is suspended during motion and restored when scrolling stops, rendering now uses hardware acceleration, and the permanent animation loop was removed. NetWatch now also has a GitHub Pages website with a stable Android APK download area and creator credit for Ricky McElroy, NetWatch CEO."
           }
           EOF
 
@@ -92,7 +92,7 @@ jobs:
           git push -f origin refs/tags/netwatch-latest
           gh release create netwatch-latest NetWatchPhone.apk update.json \
             --title "NetWatch Phone ${{ steps.version.outputs.name }}" \
-            --notes "Signed NetWatch Phone 0.7.4 release — Created by Ricky McElroy, NetWatch CEO. Clear lens bubbles, sharper Sandia / Albuquerque background visibility, reliable Open Horizon ringtone playback, and a coming-soon NetWatch website placeholder."
+            --notes "Signed NetWatch Phone 0.7.5 release — Created by Ricky McElroy, NetWatch CEO. Faster contact scrolling, hardware-accelerated glass, motion-aware lens rendering, no drag-highlighting, and a GitHub Pages download website for Android."
 
       - name: Build preview APK when signing is not configured
         if: steps.signing.outputs.configured != 'true'
