@@ -77,7 +77,8 @@ jobs:
             "version_code": ${{ steps.version.outputs.code }},
             "version_name": "${{ steps.version.outputs.name }}",
             "apk_url": "https://github.com/Whenever1061/NetWatchPhone-Build/releases/download/netwatch-latest/NetWatchPhone.apk",
-            "sha256": "$SHA"
+            "sha256": "$SHA",
+            "notes": "0.6 adds the new NetWatch shield-call icon, your Albuquerque Sandia sunset background, animated glass contact focus with calm gold illumination, the full Update Center, richer caller identity/location intelligence, and save/correct caller support."
           }
           EOF
 
@@ -91,7 +92,7 @@ jobs:
           git push -f origin refs/tags/netwatch-latest
           gh release create netwatch-latest NetWatchPhone.apk update.json \
             --title "NetWatch Phone ${{ steps.version.outputs.name }}" \
-            --notes "Permanent-signed NetWatch Phone release with built-in GitHub updater."
+            --notes "Signed NetWatch Phone 0.6 release: new identity, Albuquerque background, animated contact glass, Update Center and caller intelligence."
 
       - name: Build preview APK when signing is not configured
         if: steps.signing.outputs.configured != 'true'
