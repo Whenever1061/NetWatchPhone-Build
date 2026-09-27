@@ -25,6 +25,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Add current signed APK to website
+        run: |
+          curl --fail --location --retry 3 \
+            -o docs/NetWatchPhone.apk \
+            https://github.com/Whenever1061/NetWatchPhone-Build/releases/download/netwatch-latest/NetWatchPhone.apk
+          test -s docs/NetWatchPhone.apk
+          echo "Website APK size: $(wc -c < docs/NetWatchPhone.apk) bytes"
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
         with:
