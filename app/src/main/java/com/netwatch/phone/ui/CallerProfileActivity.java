@@ -38,7 +38,7 @@ public final class CallerProfileActivity extends Activity {
     private android.view.View buildUi(){
         FrameLayout frame=new FrameLayout(this);
         ImageView bg=new ImageView(this);bg.setImageResource(R.drawable.mountains_sunset);bg.setScaleType(ImageView.ScaleType.CENTER_CROP);frame.addView(bg,new FrameLayout.LayoutParams(-1,-1));
-        android.view.View shade=new android.view.View(this);shade.setBackgroundColor(0xC7071522);frame.addView(shade,new FrameLayout.LayoutParams(-1,-1));
+        android.view.View shade=new android.view.View(this);shade.setBackgroundColor(0x66071522);frame.addView(shade,new FrameLayout.LayoutParams(-1,-1));
 
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setGravity(Gravity.CENTER_HORIZONTAL);root.setPadding(dp(18),dp(18),dp(18),dp(30));
