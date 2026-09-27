@@ -28,6 +28,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Read app version
+        id: version
+        run: |
+          VERSION_CODE="$(grep -E 'versionCode = ' app/build.gradle.kts | head -1 | grep -oE '[0-9]+')"
+          VERSION_NAME="$(grep -E 'versionName = ' app/build.gradle.kts | head -1 | sed -E 's/.*versionName = "([^"]+)".*/\1/')"
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
       - name: Build unsigned release
         run: gradle --no-daemon assembleRelease
 
@@ -67,8 +74,8 @@ jobs:
           SHA=$(sha256sum NetWatchPhone.apk | awk '{print $1}')
           cat > update.json <<EOF
           {
-            "version_code": 3,
-            "version_name": "0.3.0",
+            "version_code": ${{ steps.version.outputs.code }},
+            "version_name": "${{ steps.version.outputs.name }}",
             "apk_url": "https://github.com/Whenever1061/NetWatchPhone-Build/releases/download/netwatch-latest/NetWatchPhone.apk",
             "sha256": "$SHA"
           }
@@ -83,18 +90,18 @@ jobs:
           git tag -f netwatch-latest "$GITHUB_SHA"
           git push -f origin refs/tags/netwatch-latest
           gh release create netwatch-latest NetWatchPhone.apk update.json \
-            --title "NetWatch Phone 0.3.0" \
+            --title "NetWatch Phone ${{ steps.version.outputs.name }}" \
             --notes "Permanent-signed NetWatch Phone release with built-in GitHub updater."
 
       - name: Build preview APK when signing is not configured
         if: steps.signing.outputs.configured != 'true'
-        run: cp app/build/outputs/apk/release/app-release-unsigned.apk NetWatchPhone-0.3.0-UNSIGNED.apk
+        run: cp app/build/outputs/apk/release/app-release-unsigned.apk "NetWatchPhone-${{ steps.version.outputs.name }}-UNSIGNED.apk"
 
       - name: Upload stable APK artifact
         if: steps.signing.outputs.configured == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: NetWatchPhone-0.3.0-signed
+          name: NetWatchPhone-${{ steps.version.outputs.name }}-signed
           path: |
             NetWatchPhone.apk
             update.json
@@ -103,5 +110,5 @@ jobs:
         if: steps.signing.outputs.configured != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: NetWatchPhone-0.3.0-UNSIGNED
-          path: NetWatchPhone-0.3.0-UNSIGNED.apk
+          name: NetWatchPhone-${{ steps.version.outputs.name }}-UNSIGNED
+          path: NetWatchPhone-${{ steps.version.outputs.name }}-UNSIGNED.apk
