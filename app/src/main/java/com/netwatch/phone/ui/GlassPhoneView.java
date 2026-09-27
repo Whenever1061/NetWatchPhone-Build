@@ -1,6 +1,7 @@
 package com.netwatch.phone.ui;
 
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.*;
 import android.os.SystemClock;
 import android.view.MotionEvent;
@@ -12,8 +13,8 @@ import java.util.List;
 
 /**
  * Main NetWatch Phone surface.
- * Uses only Android platform drawing APIs. 0.6 adds the real NetWatch Albuquerque
- * background, inertial scrolling, focus bubbles and a calm gold selection halo.
+ * Uses only Android platform drawing APIs. 0.6.1 keeps the Albuquerque photo
+ * visible edge-to-edge and guarantees a single gold contact focus at a time.
  */
 public final class GlassPhoneView extends View {
     public interface Callback {
@@ -93,6 +94,8 @@ public final class GlassPhoneView extends View {
     public void setRecentCalls(List<RecentCall> items) {
         recents.clear();
         if (items != null) recents.addAll(items);
+        selectedIndex = -1;
+        hoverIndex = -1;
         clampScroll();
         invalidate();
     }
@@ -100,6 +103,8 @@ public final class GlassPhoneView extends View {
     public void setContacts(List<ContactItem> items) {
         contacts.clear();
         if (items != null) contacts.addAll(items);
+        selectedIndex = -1;
+        hoverIndex = -1;
         clampScroll();
         invalidate();
     }
@@ -143,16 +148,21 @@ public final class GlassPhoneView extends View {
         c.drawRect(0, 0, w, h, p);
         p.setShader(null);
 
-        if (background != null && w > 1) {
-            float photoH = w * background.getHeight() / (float) background.getWidth();
-            float parallax = Math.max(-dp(12), Math.min(dp(12), -scrollPx * .025f));
+        if (background != null && w > 1 && h > 1) {
+            float bw = background.getWidth();
+            float bh = background.getHeight();
+            float scale = Math.max(w / bw, h / bh);
+            float drawW = bw * scale;
+            float drawH = bh * scale;
+            float parallax = Math.max(-dp(12), Math.min(dp(12), -scrollPx * .015f));
             Rect src = new Rect(0, 0, background.getWidth(), background.getHeight());
-            RectF dst = new RectF(-dp(8), parallax, w + dp(8), photoH + parallax);
+            RectF dst = new RectF((w - drawW) / 2f, (h - drawH) / 2f + parallax,
+                    (w + drawW) / 2f, (h + drawH) / 2f + parallax);
             c.drawBitmap(background, src, dst, p);
 
-            p.setShader(new LinearGradient(0, photoH * .22f, 0, Math.max(photoH + dp(360), h),
-                    new int[]{0x1805101E, 0x9A071421, 0xF706111F},
-                    new float[]{0f, .47f, 1f}, Shader.TileMode.CLAMP));
+            p.setShader(new LinearGradient(0, 0, 0, Math.max(1, h),
+                    new int[]{0x38040D18, 0x70071421, 0xC206111F},
+                    new float[]{0f, .48f, 1f}, Shader.TileMode.CLAMP));
             c.drawRect(0, 0, w, h, p);
             p.setShader(null);
         }
@@ -166,17 +176,19 @@ public final class GlassPhoneView extends View {
     private void drawHeader(Canvas c) {
         float top = dp(28);
         if (logo != null) {
+            p.setColor(0x5806111F);
+            c.drawCircle(dp(42), top + dp(20), dp(27), p);
             Rect src = new Rect(0,0,logo.getWidth(),logo.getHeight());
-            RectF dst = new RectF(dp(17),top-dp(2),dp(61),top+dp(42));
-            p.setShadowLayer(dp(10),0,0,0x7044B7FF);
+            RectF dst = new RectF(dp(17),top-dp(5),dp(67),top+dp(45));
+            p.setShadowLayer(dp(12),0,0,0x9044B7FF);
             c.drawBitmap(logo,src,dst,p);
             p.clearShadowLayer();
         } else {
-            drawShield(c,dp(39),top+dp(20),dp(19));
+            drawShield(c,dp(42),top+dp(20),dp(21));
         }
 
-        text(c,"NetWatch Phone",dp(70),top+dp(19),sp(26),Color.WHITE,true,Paint.Align.LEFT);
-        text(c,"Private. Protected. In your control.",dp(70),top+dp(41),sp(12),0xFFD1DFED,false,Paint.Align.LEFT);
+        text(c,"NetWatch Phone",dp(78),top+dp(19),sp(25),Color.WHITE,true,Paint.Align.LEFT);
+        text(c,"Private. Protected. In your control.",dp(78),top+dp(41),sp(11.5f),0xFFD1DFED,false,Paint.Align.LEFT);
 
         RectF more = new RectF(w-dp(59),top-dp(2),w-dp(17),top+dp(40));
         glass(c,more,dp(21),0x2EFFFFFF,0x70FFFFFF);
@@ -239,8 +251,8 @@ public final class GlassPhoneView extends View {
         int first = Math.max(0,(int)Math.floor(scrollPx/rowH));
         float rem = scrollPx - first*rowH;
         int count = Math.min(items.size()-first,(int)Math.ceil(usable/rowH)+2);
+        int activeIndex = hoverIndex >= 0 ? hoverIndex : selectedIndex;
 
-        float focusY = dragging ? lastTouchY : listTop + usable*.46f;
         long now = SystemClock.uptimeMillis();
         float pulse = .5f + .5f*(float)Math.sin(now/780.0);
 
@@ -250,26 +262,23 @@ public final class GlassPhoneView extends View {
             float cy=top+rowH*.46f;
             if (cy<listTop-dp(70)||cy>navTop+dp(70)) continue;
 
-            float dist=Math.abs(cy-focusY);
-            float proximity=(float)Math.exp(-(dist*dist)/(2f*rowH*rowH*.72f));
-            boolean selected=index==selectedIndex;
-            boolean hover=index==hoverIndex;
-            float focus=Math.max(proximity,(selected||hover)?1f:0f);
-            float scale=1f+.055f*focus;
+            boolean active=index==activeIndex;
+            float focus=active?1f:0f;
+            float scale=active?1.055f:1f;
 
             c.save();
             c.scale(scale,scale,w/2,cy);
 
             RectF row=new RectF(dp(15),top+dp(3),w-dp(15),top+rowH-dp(5));
-            if (focus>.52f) {
-                int alpha=(int)(50+70*pulse*focus);
-                p.setShadowLayer(dp(12)+dp(6)*focus,0,0,Color.argb(alpha,255,190,74));
-                glass(c,row,dp(25),0x33FFFFFF,Color.argb(150,255,201,102));
+            if (active) {
+                int alpha=(int)(65+65*pulse);
+                p.setShadowLayer(dp(15),0,0,Color.argb(alpha,255,190,74));
+                glass(c,row,dp(25),0x33FFFFFF,Color.argb(175,255,201,102));
                 p.clearShadowLayer();
 
                 stroke.setStyle(Paint.Style.STROKE);
                 stroke.setStrokeWidth(dp(1.7f));
-                stroke.setColor(Color.argb((int)(120+80*pulse),255,205,112));
+                stroke.setColor(Color.argb((int)(145+70*pulse),255,205,112));
                 RectF halo=new RectF(row.left-dp(2),row.top-dp(2),row.right+dp(2),row.bottom+dp(2));
                 c.drawRoundRect(halo,dp(27),dp(27),stroke);
                 stroke.setStyle(Paint.Style.FILL);
@@ -417,6 +426,7 @@ public final class GlassPhoneView extends View {
             float dy=y-lastY;
             if(Math.abs(y-downY)>dp(7)||Math.abs(x-downX)>dp(7)){dragging=true;moved=true;}
             if(dragging && isListPage()){
+                selectedIndex=-1;
                 scrollPx-=dy;
                 if(scrollPx<0)scrollPx*=.35f;
                 if(scrollPx>maxScroll)scrollPx=maxScroll+(scrollPx-maxScroll)*.35f;
@@ -448,7 +458,10 @@ public final class GlassPhoneView extends View {
             if(i==0)changePage(Page.FAVORITES); else if(i==1)changePage(Page.RECENTS); else if(i==2)changePage(Page.CONTACTS); else if(i==3)changePage(Page.KEYPAD);
             return;
         }
-        if(x>w-dp(75)&&y<dp(88)){if(callback!=null)callback.openSettings();return;}
+        if(x>w-dp(75)&&y<dp(88)){
+            getContext().startActivity(new Intent(getContext(),UpdateCenterActivity.class));
+            return;
+        }
         if(y>=dp(82)&&y<=dp(138)){if(callback!=null)callback.openWeatherDetails();return;}
         if((page==Page.RECENTS||page==Page.CONTACTS)&&y>=dp(145)&&y<=dp(208)){if(callback!=null)callback.openSearch();return;}
 
