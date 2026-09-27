@@ -1,0 +1,83 @@
+name: Publish Signed NetWatch Phone Update
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      NETWATCH_STORE_PASSWORD: ${{ secrets.NETWATCH_STORE_PASSWORD }}
+      NETWATCH_KEY_PASSWORD: ${{ secrets.NETWATCH_KEY_PASSWORD }}
+      NETWATCH_KEY_ALIAS: ${{ secrets.NETWATCH_KEY_ALIAS }}
+      NETWATCH_KEYSTORE_PATH: /tmp/NetWatchPhone-release.p12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Require permanent signing secrets
+        env:
+          NETWATCH_KEYSTORE_B64: ${{ secrets.NETWATCH_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+          test -n "$NETWATCH_KEYSTORE_B64" || { echo "Missing NETWATCH_KEYSTORE_B64"; exit 1; }
+          test -n "$NETWATCH_STORE_PASSWORD" || { echo "Missing NETWATCH_STORE_PASSWORD"; exit 1; }
+          test -n "$NETWATCH_KEY_PASSWORD" || { echo "Missing NETWATCH_KEY_PASSWORD"; exit 1; }
+          test -n "$NETWATCH_KEY_ALIAS" || { echo "Missing NETWATCH_KEY_ALIAS"; exit 1; }
+          printf '%s' "$NETWATCH_KEYSTORE_B64" | base64 -d > "$NETWATCH_KEYSTORE_PATH"
+          chmod 600 "$NETWATCH_KEYSTORE_PATH"
+
+      - name: Install Android SDK 35
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build permanently signed release APK
+        run: gradle --no-daemon assembleRelease
+
+      - name: Prepare stable updater assets
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -f "$APK"
+          cp "$APK" NetWatchPhone-latest.apk
+          SHA="$(sha256sum NetWatchPhone-latest.apk | awk '{print $1}')"
+          VERSION_CODE="$(grep -E 'versionCode = ' app/build.gradle.kts | head -1 | grep -oE '[0-9]+')"
+          VERSION_NAME="$(grep -E 'versionName = ' app/build.gradle.kts | head -1 | sed -E 's/.*versionName = "([^"]+)".*/\1/')"
+          cat > update.json <<EOF
+          {
+            "version_code": ${VERSION_CODE},
+            "version_name": "${VERSION_NAME}",
+            "apk_url": "https://github.com/Whenever1061/NetWatchPhone-Build/releases/download/netwatch-latest/NetWatchPhone-latest.apk",
+            "sha256": "${SHA}"
+          }
+          EOF
+          cat update.json
+          sha256sum NetWatchPhone-latest.apk > NetWatchPhone-latest.apk.sha256
+
+      - name: Publish stable updater channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view netwatch-latest >/dev/null 2>&1; then
+            gh release upload netwatch-latest NetWatchPhone-latest.apk NetWatchPhone-latest.apk.sha256 update.json --clobber
+          else
+            gh release create netwatch-latest NetWatchPhone-latest.apk NetWatchPhone-latest.apk.sha256 update.json \
+              --title "NetWatch Phone Latest Signed Build" \
+              --notes "Stable signed update channel used by the NetWatch Phone in-app updater."
+          fi
