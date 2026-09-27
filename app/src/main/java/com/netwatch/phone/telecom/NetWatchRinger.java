@@ -3,14 +3,15 @@ package com.netwatch.phone.telecom;
 import android.content.Context;
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
+import android.media.AudioManager;
 import android.media.AudioTrack;
 
-/** Local synthesized ringtone pack. No cloud audio or media files are required. */
+/** Local synthesized ringtone pack. No cloud audio or copyrighted vendor tones are required. */
 public final class NetWatchRinger {
     private static final String PREFS="netwatch_ringtone_pack";
     private static final String KEY_SELECTED="selected";
     private static final String[] NAMES={
-            "Clear Horizon",
+            "Open Horizon",
             "Sandia Dawn",
             "Night Watch",
             "Mesa Pulse",
@@ -28,30 +29,75 @@ public final class NetWatchRinger {
 
     private static void play(Context context,int style,boolean loop){
         try{
-            final int sr=32000;final double seconds=6.0;final int count=(int)(sr*seconds);short[] pcm=new short[count];
-            for(int i=0;i<count;i++){double t=i/(double)sr,sample=sample(style,t);if(t>5.72)sample*=Math.max(0,(6.0-t)/.28);sample=Math.max(-.72,Math.min(.72,sample));pcm[i]=(short)(sample*32767);}
-            AudioTrack a=new AudioTrack.Builder().setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(sr).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build()).setBufferSizeInBytes(pcm.length*2).setTransferMode(AudioTrack.MODE_STATIC).build();
-            a.write(pcm,0,pcm.length);if(loop)a.setLoopPoints(0,pcm.length,-1);a.setVolume(.76f);a.play();track=a;
+            final int sr=44100;
+            final double seconds=8.0;
+            final int count=(int)(sr*seconds);
+            short[] pcm=new short[count];
+            for(int i=0;i<count;i++){
+                double t=i/(double)sr;
+                double sample=sample(style,t);
+                if(t>7.72)sample*=Math.max(0,(8.0-t)/.28);
+                sample=Math.max(-.92,Math.min(.92,sample));
+                pcm[i]=(short)(sample*32767);
+            }
+
+            AudioAttributes attrs=new AudioAttributes.Builder()
+                    .setLegacyStreamType(loop?AudioManager.STREAM_RING:AudioManager.STREAM_MUSIC)
+                    .build();
+            AudioTrack a=new AudioTrack.Builder()
+                    .setAudioAttributes(attrs)
+                    .setAudioFormat(new AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(sr)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build())
+                    .setBufferSizeInBytes(pcm.length*2)
+                    .setTransferMode(AudioTrack.MODE_STATIC)
+                    .build();
+            int written=a.write(pcm,0,pcm.length);
+            if(written<=0)throw new IllegalStateException("AudioTrack write failed");
+            if(loop)a.setLoopPoints(0,pcm.length,-1);
+            a.setVolume(1.0f);
+            a.play();
+            track=a;
         }catch(Throwable error){stop();}
     }
 
-    private static double sample(int style,double t){switch(style){case 1:return sandiaDawn(t);case 2:return nightWatch(t);case 3:return mesaPulse(t);case 4:return secureLine(t);default:return clearHorizon(t);}}
+    private static double sample(int style,double t){
+        switch(style){
+            case 1:return sandiaDawn(t);
+            case 2:return nightWatch(t);
+            case 3:return mesaPulse(t);
+            case 4:return secureLine(t);
+            default:return openHorizon(t);
+        }
+    }
 
-    /** Clean, recognizable two-note phone cadence with no rumble or harsh overtones. */
-    private static double clearHorizon(double t){
-        double cycle=t%2.15,s=0;
-        if(cycle<.46)s+=tone(659.25,cycle,.46,.34);
-        if(cycle>.62&&cycle<1.10)s+=tone(783.99,cycle-.62,.48,.31);
-        if(cycle>1.24&&cycle<1.70)s+=tone(659.25,cycle-1.24,.46,.27);
+    /** Original NetWatch melody: bright, clean and spacious without copying a commercial ringtone. */
+    private static double openHorizon(double t){
+        double cycle=t%4.0;
+        double s=0;
+        s+=noteWindow(cycle,0.00,.58,659.25,.42);
+        s+=noteWindow(cycle,.48,.72,783.99,.38);
+        s+=noteWindow(cycle,1.08,.76,987.77,.36);
+        s+=noteWindow(cycle,1.82,.68,783.99,.33);
+        s+=noteWindow(cycle,2.52,.70,1046.50,.34);
+        s+=noteWindow(cycle,3.18,.68,783.99,.29);
         return s;
     }
 
-    private static double sandiaDawn(double t){double[] notes={523.25,659.25,783.99,1046.50,783.99};double[] starts={0.0,.72,1.44,2.16,3.45};return bellPhrase(t,notes,starts,1.35,.19);}
-    private static double nightWatch(double t){double[] notes={329.63,440.00,523.25,440.00};double[] starts={0.0,1.25,2.50,3.75};return bellPhrase(t,notes,starts,1.65,.18);}
-    private static double mesaPulse(double t){double beat=t%1.0,env=Math.exp(-beat*8.5),s=.18*env*Math.sin(2*Math.PI*196.00*beat);if((t%.5)<.13)s+=.08*Math.exp(-(t%.5)*14.0)*Math.sin(2*Math.PI*392.00*(t%.5));return s+bellPhrase(t,new double[]{523.25,659.25,523.25},new double[]{.35,2.35,4.35},1.0,.12);}
-    private static double secureLine(double t){double cycle=t%1.7,s=0;if(cycle<.30)s+=tone(880.00,cycle,.30,.24);if(cycle>.56&&cycle<.90)s+=tone(659.25,cycle-.56,.34,.20);return s;}
-    private static double tone(double f,double dt,double length,double volume){if(dt<0||dt>length)return 0;double edge=Math.sin(Math.PI*Math.min(1,dt/.05))*Math.sin(Math.PI*Math.min(1,(length-dt)/.06));return volume*edge*Math.sin(2*Math.PI*f*dt);}
-    private static double bellPhrase(double t,double[] notes,double[] starts,double length,double volume){double sample=0;for(int n=0;n<notes.length;n++){double dt=t-starts[n];if(dt>=0&&dt<length){double attack=Math.min(dt/.025,1.0),env=attack*Math.exp(-dt/(length*.50)),f=notes[n];sample+=env*(Math.sin(2*Math.PI*f*dt)+.13*Math.sin(2*Math.PI*f*2.0*dt))*volume;}}return sample;}
+    private static double sandiaDawn(double t){double cycle=t%4.2,s=0;s+=noteWindow(cycle,0,.62,523.25,.36);s+=noteWindow(cycle,.55,.68,659.25,.34);s+=noteWindow(cycle,1.18,.70,783.99,.32);s+=noteWindow(cycle,1.86,.80,1046.50,.30);s+=noteWindow(cycle,2.78,.90,783.99,.27);return s;}
+    private static double nightWatch(double t){double cycle=t%4.5,s=0;s+=noteWindow(cycle,0,.90,329.63,.31);s+=noteWindow(cycle,1.10,.90,440.00,.28);s+=noteWindow(cycle,2.20,.96,523.25,.27);s+=noteWindow(cycle,3.30,.90,440.00,.25);return s;}
+    private static double mesaPulse(double t){double beat=t%.75,env=Math.exp(-beat*8.0),s=.22*env*Math.sin(2*Math.PI*220.0*beat);double cycle=t%3.0;s+=noteWindow(cycle,.22,.48,523.25,.21);s+=noteWindow(cycle,1.12,.48,659.25,.20);s+=noteWindow(cycle,2.02,.48,783.99,.19);return s;}
+    private static double secureLine(double t){double cycle=t%2.0,s=0;s+=noteWindow(cycle,0,.36,880.0,.31);s+=noteWindow(cycle,.58,.40,659.25,.27);s+=noteWindow(cycle,1.16,.34,880.0,.25);return s;}
 
-    public static synchronized void stop(){try{if(track!=null){track.pause();track.flush();track.release();}}catch(Throwable ignored){}track=null;}
+    private static double noteWindow(double t,double start,double length,double f,double volume){
+        double dt=t-start;if(dt<0||dt>length)return 0;
+        double attack=Math.min(1,dt/.025),release=Math.min(1,(length-dt)/.09),env=attack*release;
+        double fundamental=Math.sin(2*Math.PI*f*dt);
+        double shimmer=.18*Math.sin(2*Math.PI*f*2.0*dt)+.07*Math.sin(2*Math.PI*f*3.0*dt);
+        return volume*env*(fundamental+shimmer);
+    }
+
+    public static synchronized void stop(){try{if(track!=null){track.stop();track.flush();track.release();}}catch(Throwable ignored){}track=null;}
 }
