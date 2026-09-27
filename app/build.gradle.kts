@@ -17,8 +17,8 @@ android {
         applicationId = "com.netwatch.phone"
         minSdk = 29
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.7.4"
+        versionCode = 14
+        versionName = "0.7.5"
         buildConfigField("String", "DEFAULT_CONTACT_CENTER_URL", "\"\"")
     }
 
