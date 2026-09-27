@@ -18,7 +18,6 @@ import android.widget.*;
 import com.netwatch.phone.BuildConfig;
 import com.netwatch.phone.api.ApiClient;
 import com.netwatch.phone.config.AppConfig;
-import com.netwatch.phone.update.GitHubUpdater;
 import com.netwatch.phone.weather.WeatherClient;
 import com.netwatch.phone.weather.WeatherSnapshot;
 import java.text.SimpleDateFormat;
@@ -46,7 +45,7 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
     @Override protected void onResume(){super.onResume();if(phoneView!=null){phoneView.postDelayed(this::refreshDeviceDataSafely,120);phoneView.postDelayed(()->refreshWeather(false),220);}}
     @Override protected void onDestroy(){executor.shutdownNow();super.onDestroy();}
 
-    private void configureWindow(){try{Window w=getWindow();w.setStatusBarColor(Color.rgb(8,20,34));w.setNavigationBarColor(Color.rgb(5,14,26));}catch(Throwable ignored){}}
+    private void configureWindow(){try{Window w=getWindow();w.setStatusBarColor(Color.rgb(5,15,27));w.setNavigationBarColor(Color.rgb(4,11,20));}catch(Throwable ignored){}}
     private void handleDialIntent(Intent intent){if(intent==null||phoneView==null)return;Uri data=intent.getData();if(Intent.ACTION_DIAL.equals(intent.getAction())&&data!=null)phoneView.showKeypad(data.getSchemeSpecificPart());}
 
     @Override public void placeCall(String raw){
@@ -90,9 +89,12 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
         int pad=dp(18);
         LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(pad,pad/2,pad,0);
 
+        ImageView logo=new ImageView(this);logo.setImageResource(com.netwatch.phone.R.drawable.netwatch_phone_icon);logo.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        LinearLayout.LayoutParams logoP=new LinearLayout.LayoutParams(dp(66),dp(66));logoP.gravity=android.view.Gravity.CENTER_HORIZONTAL;box.addView(logo,logoP);
+
         TextView version=new TextView(this);
-        version.setText("NetWatch Phone "+BuildConfig.VERSION_NAME+"\nDaily Albuquerque scenes • NetWatch ringtone • local checker fallback");
-        version.setPadding(0,0,0,pad/2);box.addView(version,new LinearLayout.LayoutParams(-1,-2));
+        version.setText("NetWatch Phone "+BuildConfig.VERSION_NAME+"\nSignature Albuquerque glass • caller intelligence • animated focus");
+        version.setGravity(android.view.Gravity.CENTER);version.setPadding(0,dp(8),0,pad/2);box.addView(version,new LinearLayout.LayoutParams(-1,-2));
 
         EditText api=new EditText(this);api.setSingleLine(true);api.setHint("Your contact-center API, e.g. http://192.168.1.20:8767");api.setText(AppConfig.getContactCenterUrl(this));box.addView(api,new LinearLayout.LayoutParams(-1,-2));
         if(AppConfig.isEmulatorPlaceholder(this)){
@@ -101,7 +103,7 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
 
         Button save=new Button(this);save.setText("Save & test contact center");save.setOnClickListener(v->{if(!AppConfig.setContactCenterUrl(this,api.getText().toString())){Toast.makeText(this,"Invalid API URL",Toast.LENGTH_SHORT).show();return;}testApi();});box.addView(save);
         Button weather=new Button(this);weather.setText("Refresh Albuquerque weather");weather.setOnClickListener(v->refreshWeather(true));box.addView(weather);
-        Button update=new Button(this);update.setText("Check GitHub for updates");update.setOnClickListener(v->GitHubUpdater.check(this,true));box.addView(update);
+        Button update=new Button(this);update.setText("Open NetWatch Update Center");update.setOnClickListener(v->startActivity(new Intent(this,UpdateCenterActivity.class)));box.addView(update);
         Button dialer=new Button(this);dialer.setText(holdsDialerRole()?"NetWatch is the default phone app":"Make NetWatch the default phone app");dialer.setOnClickListener(v->requestRoleSafely(RoleManager.ROLE_DIALER,ROLE_DIALER_REQ));box.addView(dialer);
         Button screening=new Button(this);screening.setText("Enable NetWatch call screening");screening.setOnClickListener(v->requestRoleSafely(RoleManager.ROLE_CALL_SCREENING,ROLE_SCREEN_REQ));box.addView(screening);
         Button appInfo=new Button(this);appInfo.setText("Open App Info / restricted settings");appInfo.setOnClickListener(v->openAppInfo());box.addView(appInfo);
@@ -182,7 +184,7 @@ public final class MainActivity extends Activity implements GlassPhoneView.Callb
         String[] projection={CallLog.Calls.NUMBER,CallLog.Calls.CACHED_NAME,CallLog.Calls.TYPE,CallLog.Calls.DATE};
         try(Cursor c=getContentResolver().query(CallLog.Calls.CONTENT_URI,projection,null,null,CallLog.Calls.DATE+" DESC")){
             if(c==null)return out;int nc=c.getColumnIndexOrThrow(CallLog.Calls.NUMBER),namec=c.getColumnIndexOrThrow(CallLog.Calls.CACHED_NAME),tc=c.getColumnIndexOrThrow(CallLog.Calls.TYPE),dc=c.getColumnIndexOrThrow(CallLog.Calls.DATE);
-            while(c.moveToNext()&&out.size()<100){String number=c.getString(nc),name=c.getString(namec);int type=c.getInt(tc);long date=c.getLong(dc);boolean missed=type==CallLog.Calls.MISSED_TYPE||type==CallLog.Calls.REJECTED_TYPE;String direction=type==CallLog.Calls.OUTGOING_TYPE?"↗ Mobile":(missed?"Missed":"↙ Mobile");out.add(new GlassPhoneView.RecentCall(name,number,direction+" • "+friendlyTime(date),missed));}
+            while(c.moveToNext()&&out.size()<200){String number=c.getString(nc),name=c.getString(namec);int type=c.getInt(tc);long date=c.getLong(dc);boolean missed=type==CallLog.Calls.MISSED_TYPE||type==CallLog.Calls.REJECTED_TYPE;String direction=type==CallLog.Calls.OUTGOING_TYPE?"↗ Mobile":(missed?"Missed":"↙ Mobile");out.add(new GlassPhoneView.RecentCall(name,number,direction+" • "+friendlyTime(date),missed));}
         }catch(Throwable ignored){}
         return out;
     }
