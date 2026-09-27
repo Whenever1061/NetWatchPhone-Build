@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.WRITE_CALL_LOG" />
@@ -17,10 +17,7 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
-        <activity
-            android:name=".ui.MainActivity"
-            android:exported="true"
-            android:launchMode="singleTop">
+        <activity android:name=".ui.MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -37,12 +34,15 @@
         </activity>
 
         <activity
-            android:name=".ui.CallScreenActivity"
+            android:name=".ui.ScreeningActivity"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:launchMode="singleTop"
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
+
+        <receiver
+            android:name=".update.UpdateInstallReceiver"
+            android:exported="false" />
 
         <service
             android:name=".telecom.NetWatchInCallService"
@@ -50,19 +50,14 @@
             android:exported="true">
             <meta-data android:name="android.telecom.IN_CALL_SERVICE_UI" android:value="true" />
             <meta-data android:name="android.telecom.IN_CALL_SERVICE_RINGING" android:value="true" />
-            <intent-filter>
-                <action android:name="android.telecom.InCallService" />
-            </intent-filter>
+            <intent-filter><action android:name="android.telecom.InCallService" /></intent-filter>
         </service>
 
         <service
             android:name=".telecom.NetWatchCallScreeningService"
             android:permission="android.permission.BIND_SCREENING_SERVICE"
             android:exported="true">
-            <intent-filter>
-                <action android:name="android.telecom.CallScreeningService" />
-            </intent-filter>
+            <intent-filter><action android:name="android.telecom.CallScreeningService" /></intent-filter>
         </service>
-
     </application>
 </manifest>
