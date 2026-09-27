@@ -3,39 +3,28 @@ package com.netwatch.phone.telecom;
 import android.telecom.Call;
 import android.telecom.CallScreeningService;
 import android.util.Log;
-import com.netwatch.phone.api.ApiClient;
 import com.netwatch.phone.api.ScreenDecision;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class NetWatchCallScreeningService extends CallScreeningService {
-    private static final String TAG = "NetWatchScreen";
-    private final ExecutorService executor = Executors.newCachedThreadPool();
+    private static final String TAG="NetWatchScreen";
+    private final ExecutorService executor=Executors.newSingleThreadExecutor();
 
-    @Override
-    public void onScreenCall(Call.Details details) {
-        final String number = details.getHandle() == null ? "" : details.getHandle().getSchemeSpecificPart();
-        executor.execute(() -> {
-            ScreenDecision decision;
-            try {
-                boolean known = ContactLookup.isKnown(this, number);
-                decision = new ApiClient(this).lookupIncoming(number, known);
-            } catch (Exception ex) {
-                Log.w(TAG, "Contact center unavailable; fail-open", ex);
-                decision = ScreenDecision.allow("contact_center_unavailable");
-            }
-            respond(details, decision);
+    @Override public void onScreenCall(Call.Details details){
+        final String number=details.getHandle()==null?"":details.getHandle().getSchemeSpecificPart();
+        executor.execute(()->{
+            CallChecker.Result checked=CallChecker.check(this,number);
+            Log.i(TAG,(checked.remote?"remote":"local")+" checker: "+checked.summary);
+            respond(details,checked.decision);
         });
     }
 
-    private void respond(Call.Details details, ScreenDecision decision) {
-        CallResponse.Builder b = new CallResponse.Builder();
-        switch (decision.action) {
+    private void respond(Call.Details details,ScreenDecision decision){
+        CallResponse.Builder b=new CallResponse.Builder();
+        switch(decision.action){
             case BLOCK:
-                b.setDisallowCall(true)
-                 .setRejectCall(true)
-                 .setSkipCallLog(false)
-                 .setSkipNotification(false);
+                b.setDisallowCall(true).setRejectCall(true).setSkipCallLog(false).setSkipNotification(false);
                 break;
             case SILENCE:
                 b.setSilenceCall(true);
@@ -44,15 +33,10 @@ public final class NetWatchCallScreeningService extends CallScreeningService {
                 b.setSilenceCall(true);
                 break;
             case ALLOW:
-            default:
-                break;
+            default: break;
         }
-        respondToCall(details, b.build());
+        respondToCall(details,b.build());
     }
 
-    @Override
-    public void onDestroy() {
-        executor.shutdownNow();
-        super.onDestroy();
-    }
+    @Override public void onDestroy(){executor.shutdownNow();super.onDestroy();}
 }
