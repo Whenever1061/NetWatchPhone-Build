@@ -87,7 +87,9 @@ public final class CallerProfileActivity extends Activity {
         if(number.isEmpty())return;
         try{startActivity(new Intent(Intent.ACTION_SENDTO,Uri.parse("smsto:"+Uri.encode(number))));}catch(Throwable ignored){}
     }
-    private void openContact(){try{if(contactUri!=null)startActivity(new Intent(Intent.ACTION_VIEW,contactUri));}catch(Throwable ignored){}
+    private void openContact(){
+        try{if(contactUri!=null)startActivity(new Intent(Intent.ACTION_VIEW,contactUri));}catch(Throwable ignored){}
+    }
 
     private Uri findContactUri(String n){
         if(n==null||n.trim().isEmpty())return null;
