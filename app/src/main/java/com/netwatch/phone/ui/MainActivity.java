@@ -1,11 +1,9 @@
 package com.netwatch.phone.ui;
 
 import android.Manifest;
-import android.app.Activity;
-import android.app.AlertDialog;
+import android.app.*;
 import android.app.role.RoleManager;
-import android.content.Context;
-import android.content.Intent;
+import android.content.*;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Color;
@@ -13,342 +11,197 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.provider.CallLog;
 import android.provider.ContactsContract;
+import android.provider.Settings;
 import android.telecom.TelecomManager;
 import android.view.Window;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-import android.widget.Toast;
-
+import android.widget.*;
 import com.netwatch.phone.BuildConfig;
+import com.netwatch.phone.api.ApiClient;
 import com.netwatch.phone.config.AppConfig;
 import com.netwatch.phone.update.GitHubUpdater;
-
+import com.netwatch.phone.weather.WeatherClient;
+import com.netwatch.phone.weather.WeatherSnapshot;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity implements GlassPhoneView.Callback {
-    private static final int ROLE_DIALER_REQ = 1001;
-    private static final int ROLE_SCREEN_REQ = 1002;
-    private static final int PERM_CORE_REQ = 1003;
-    private static final int PERM_DIALER_REQ = 1004;
-    private static final int CONTACT_SEARCH_REQ = 1005;
-
+    private static final int ROLE_DIALER_REQ=1001,ROLE_SCREEN_REQ=1002,PERM_CORE_REQ=1003,PERM_DIALER_REQ=1004,SEARCH_REQ=1005;
     private GlassPhoneView phoneView;
-    private String pendingNumber;
+    private String pendingNumber="";
+    private final ExecutorService executor=Executors.newCachedThreadPool();
+    private WeatherSnapshot lastWeather=WeatherSnapshot.loading();
 
-    @Override protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        configureWindowSafely();
-        try {
-            phoneView = new GlassPhoneView(this, this);
-            setContentView(phoneView);
-        } catch (Throwable fatalUi) {
-            showEmergencyUi(fatalUi);
-            return;
-        }
+    @Override protected void onCreate(Bundle state){
+        super.onCreate(state);
+        configureWindow();
+        try{phoneView=new GlassPhoneView(this,this);setContentView(phoneView);}
+        catch(Throwable e){showEmergencyUi(e);return;}
         handleDialIntent(getIntent());
-        phoneView.postDelayed(() -> {
-            requestCorePermissionsSafely();
-            refreshDeviceDataSafely();
-        }, 400);
+        phoneView.postDelayed(()->{requestCorePermissionsSafely();refreshDeviceDataSafely();refreshWeather(false);},350);
     }
 
-    @Override protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent);
-        handleDialIntent(intent);
-    }
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);handleDialIntent(intent);}
+    @Override protected void onResume(){super.onResume();if(phoneView!=null){phoneView.postDelayed(this::refreshDeviceDataSafely,120);phoneView.postDelayed(()->refreshWeather(false),220);}}
+    @Override protected void onDestroy(){executor.shutdownNow();super.onDestroy();}
 
-    @Override protected void onResume() {
-        super.onResume();
-        if (phoneView != null) phoneView.postDelayed(this::refreshDeviceDataSafely, 120);
-    }
+    private void configureWindow(){try{Window w=getWindow();w.setStatusBarColor(Color.rgb(8,20,34));w.setNavigationBarColor(Color.rgb(5,14,26));}catch(Throwable ignored){}}
+    private void handleDialIntent(Intent intent){if(intent==null||phoneView==null)return;Uri data=intent.getData();if(Intent.ACTION_DIAL.equals(intent.getAction())&&data!=null)phoneView.showKeypad(data.getSchemeSpecificPart());}
 
-    private void configureWindowSafely() {
-        try {
-            Window w = getWindow();
-            w.setStatusBarColor(Color.rgb(8, 20, 34));
-            w.setNavigationBarColor(Color.rgb(5, 14, 26));
-        } catch (Throwable ignored) { }
-    }
-
-    private void showEmergencyUi(Throwable problem) {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        int p = dp(24);
-        root.setPadding(p, p, p, p);
-        root.setBackgroundColor(Color.rgb(8, 20, 34));
-        TextView title = new TextView(this);
-        title.setText("NetWatch Phone");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(28);
-        root.addView(title);
-        TextView msg = new TextView(this);
-        msg.setText("Safe mode loaded.\n\n" + problem.getClass().getSimpleName() + ": " + String.valueOf(problem.getMessage()));
-        msg.setTextColor(0xFFD6E8FA);
-        msg.setTextSize(15);
-        msg.setPadding(0, dp(18), 0, dp(18));
-        root.addView(msg);
-        Button settings = new Button(this);
-        settings.setText("Open NetWatch settings");
-        settings.setOnClickListener(v -> openSettings());
-        root.addView(settings);
-        setContentView(root);
-    }
-
-    private void handleDialIntent(Intent intent) {
-        if (intent == null || phoneView == null) return;
-        Uri data = intent.getData();
-        if (Intent.ACTION_DIAL.equals(intent.getAction()) && data != null) {
-            phoneView.showKeypad(data.getSchemeSpecificPart());
-        }
-    }
-
-    @Override public void placeCall(String rawNumber) {
-        final String number = rawNumber == null ? "" : rawNumber.trim();
-        if (number.isEmpty()) return;
-
-        if (!holdsDialerRole()) {
-            pendingNumber = number;
-            Toast.makeText(this, "Make NetWatch the default phone app so the call stays inside NetWatch.", Toast.LENGTH_LONG).show();
-            requestRoleSafely(RoleManager.ROLE_DIALER, ROLE_DIALER_REQ);
+    @Override public void placeCall(String raw){
+        String n=raw==null?"":raw.trim();if(n.isEmpty())return;
+        if(!holdsDialerRole()){
+            pendingNumber=n;
+            requestRoleSafely(RoleManager.ROLE_DIALER,ROLE_DIALER_REQ);
             return;
         }
+        try{
+            if(checkSelfPermission(Manifest.permission.CALL_PHONE)!=PackageManager.PERMISSION_GRANTED){requestCorePermissionsSafely();Toast.makeText(this,"Allow Phone permission, then tap Call again.",Toast.LENGTH_SHORT).show();return;}
+            TelecomManager tm=(TelecomManager)getSystemService(TELECOM_SERVICE);
+            if(tm==null)throw new IllegalStateException("Telecom unavailable");
+            tm.placeCall(Uri.fromParts("tel",n,null),new Bundle());
+        }catch(Throwable e){Toast.makeText(this,"Could not place call: "+shortMessage(e),Toast.LENGTH_LONG).show();}
+    }
 
-        if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
-            pendingNumber = number;
-            requestCorePermissionsSafely();
-            return;
+    @Override public void openWeatherDetails(){
+        WeatherSnapshot w=lastWeather;
+        String body=w.ok
+                ? w.condition()+"\n\nTemperature: "+Math.round(w.tempF)+"°F"
+                +"\nFeels like: "+Math.round(w.feelsF)+"°F"
+                +"\nHigh / Low: "+Math.round(w.highF)+"° / "+Math.round(w.lowF)+"°"
+                +"\nHumidity: "+Math.round(w.humidity)+"%"
+                +"\nWind: "+Math.round(w.windMph)+" mph"
+                +"\nRain chance: "+Math.round(w.rainChance)+"%"
+                +"\nSunrise: "+formatSunTime(w.sunrise)
+                +"\nSunset: "+formatSunTime(w.sunset)
+                +"\n\nLocation: Albuquerque, NM (fixed city coordinates; no precise device location sent)"
+                : "Weather is unavailable right now. NetWatch will keep the last cached Albuquerque forecast when possible.";
+        new AlertDialog.Builder(this).setTitle("Albuquerque weather").setMessage(body)
+                .setNegativeButton("Close",null).setPositiveButton("Refresh",(d,x)->refreshWeather(true)).show();
+    }
+
+    @Override public void openSearch(){
+        if(checkSelfPermission(Manifest.permission.READ_CONTACTS)!=PackageManager.PERMISSION_GRANTED){requestCorePermissionsSafely();return;}
+        startActivityForResult(new Intent(this,ContactSearchActivity.class),SEARCH_REQ);
+    }
+
+    @Override public void openSettings(){
+        int pad=dp(18);
+        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(pad,pad/2,pad,0);
+
+        TextView version=new TextView(this);
+        version.setText("NetWatch Phone "+BuildConfig.VERSION_NAME+"\nDaily Albuquerque scenes • NetWatch ringtone • local checker fallback");
+        version.setPadding(0,0,0,pad/2);box.addView(version,new LinearLayout.LayoutParams(-1,-2));
+
+        EditText api=new EditText(this);api.setSingleLine(true);api.setHint("Your contact-center API, e.g. http://192.168.1.20:8767");api.setText(AppConfig.getContactCenterUrl(this));box.addView(api,new LinearLayout.LayoutParams(-1,-2));
+        if(AppConfig.isEmulatorPlaceholder(this)){
+            TextView warn=new TextView(this);warn.setText("10.0.2.2 is an emulator-only address. On this Fairphone, enter the real LAN or public URL for your contact center.");warn.setTextColor(0xFFFFB86B);warn.setPadding(0,dp(7),0,dp(7));box.addView(warn);
         }
 
-        try {
-            TelecomManager tm = (TelecomManager) getSystemService(TELECOM_SERVICE);
-            if (tm == null) throw new IllegalStateException("Android Telecom is unavailable");
-            Bundle extras = new Bundle();
-            extras.putBoolean("netwatch_origin", true);
-            tm.placeCall(Uri.fromParts("tel", number, null), extras);
-        } catch (Throwable error) {
-            Toast.makeText(this, "Could not place call: " + shortMessage(error), Toast.LENGTH_LONG).show();
+        Button save=new Button(this);save.setText("Save & test contact center");save.setOnClickListener(v->{if(!AppConfig.setContactCenterUrl(this,api.getText().toString())){Toast.makeText(this,"Invalid API URL",Toast.LENGTH_SHORT).show();return;}testApi();});box.addView(save);
+        Button weather=new Button(this);weather.setText("Refresh Albuquerque weather");weather.setOnClickListener(v->refreshWeather(true));box.addView(weather);
+        Button update=new Button(this);update.setText("Check GitHub for updates");update.setOnClickListener(v->GitHubUpdater.check(this,true));box.addView(update);
+        Button dialer=new Button(this);dialer.setText(holdsDialerRole()?"NetWatch is the default phone app":"Make NetWatch the default phone app");dialer.setOnClickListener(v->requestRoleSafely(RoleManager.ROLE_DIALER,ROLE_DIALER_REQ));box.addView(dialer);
+        Button screening=new Button(this);screening.setText("Enable NetWatch call screening");screening.setOnClickListener(v->requestRoleSafely(RoleManager.ROLE_CALL_SCREENING,ROLE_SCREEN_REQ));box.addView(screening);
+        Button appInfo=new Button(this);appInfo.setText("Open App Info / restricted settings");appInfo.setOnClickListener(v->openAppInfo());box.addView(appInfo);
+
+        new AlertDialog.Builder(this).setTitle("NetWatch Phone").setMessage("Phone → your API → your contact center. Weather sends only fixed Albuquerque city coordinates.")
+                .setView(box).setPositiveButton("Done",null).show();
+    }
+
+    private void testApi(){
+        if(!AppConfig.isUsableContactCenter(this)){Toast.makeText(this,"Set your real contact-center address first.",Toast.LENGTH_LONG).show();return;}
+        Toast.makeText(this,"Testing contact center…",Toast.LENGTH_SHORT).show();
+        executor.execute(()->{try{new ApiClient(this).health();runOnUiThread(()->Toast.makeText(this,"Contact center is reachable ✓",Toast.LENGTH_LONG).show());}
+        catch(Throwable e){runOnUiThread(()->Toast.makeText(this,"Contact center test failed: "+shortMessage(e),Toast.LENGTH_LONG).show());}});
+    }
+
+    private void refreshWeather(boolean force){
+        executor.execute(()->{final WeatherSnapshot snapshot=WeatherClient.load(this,force);runOnUiThread(()->{lastWeather=snapshot;if(phoneView!=null)phoneView.setWeather(snapshot);if(force)Toast.makeText(this,snapshot.ok?"Weather updated":"Weather unavailable",Toast.LENGTH_SHORT).show();});});
+    }
+
+    private void requestRoleSafely(String role,int requestCode){
+        try{
+            RoleManager rm=(RoleManager)getSystemService(Context.ROLE_SERVICE);
+            if(rm==null||!rm.isRoleAvailable(role)){Toast.makeText(this,"That Android role is unavailable.",Toast.LENGTH_SHORT).show();return;}
+            if(rm.isRoleHeld(role)){if(RoleManager.ROLE_DIALER.equals(role))requestDialerPermissionsSafely();Toast.makeText(this,"Already enabled",Toast.LENGTH_SHORT).show();return;}
+            startActivityForResult(rm.createRequestRoleIntent(role),requestCode);
+        }catch(Throwable e){Toast.makeText(this,"Role request failed: "+shortMessage(e),Toast.LENGTH_LONG).show();}
+    }
+
+    private boolean holdsDialerRole(){try{RoleManager rm=(RoleManager)getSystemService(Context.ROLE_SERVICE);return rm!=null&&rm.isRoleAvailable(RoleManager.ROLE_DIALER)&&rm.isRoleHeld(RoleManager.ROLE_DIALER);}catch(Throwable e){return false;}}
+
+    private void showRestrictedSettingsHelp(){
+        new AlertDialog.Builder(this).setTitle("Android blocked the default Phone role")
+                .setMessage("Because NetWatch was sideloaded, Android may require one-time approval. Open App Info, tap the ⋮ menu, choose “Allow restricted settings,” then return and make NetWatch the default Phone app.")
+                .setNegativeButton("Later",null).setPositiveButton("Open App Info",(d,w)->openAppInfo()).show();
+    }
+    private void openAppInfo(){try{startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName())));}catch(Throwable ignored){}}
+
+    private void requestCorePermissionsSafely(){
+        try{
+            String[] p={Manifest.permission.CALL_PHONE,Manifest.permission.READ_CONTACTS};ArrayList<String> missing=new ArrayList<>();
+            for(String perm:p)if(checkSelfPermission(perm)!=PackageManager.PERMISSION_GRANTED)missing.add(perm);
+            if(!missing.isEmpty())requestPermissions(missing.toArray(new String[0]),PERM_CORE_REQ);
+            if(holdsDialerRole())requestDialerPermissionsSafely();
+        }catch(Throwable ignored){}
+    }
+
+    private void requestDialerPermissionsSafely(){
+        try{
+            String[] p={Manifest.permission.READ_PHONE_STATE,Manifest.permission.READ_CALL_LOG,Manifest.permission.WRITE_CALL_LOG,Manifest.permission.ANSWER_PHONE_CALLS};ArrayList<String> missing=new ArrayList<>();
+            for(String perm:p)if(checkSelfPermission(perm)!=PackageManager.PERMISSION_GRANTED)missing.add(perm);
+            if(!missing.isEmpty())requestPermissions(missing.toArray(new String[0]),PERM_DIALER_REQ);
+        }catch(Throwable ignored){}
+    }
+
+    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
+        super.onActivityResult(requestCode,resultCode,data);
+        if(requestCode==ROLE_DIALER_REQ){
+            if(holdsDialerRole()){
+                requestDialerPermissionsSafely();refreshDeviceDataSafely();
+                if(!pendingNumber.isEmpty()){String n=pendingNumber;pendingNumber="";phoneView.postDelayed(()->placeCall(n),450);}
+            }else showRestrictedSettingsHelp();
+        }else if(requestCode==SEARCH_REQ&&resultCode==RESULT_OK&&data!=null){
+            String n=data.getStringExtra(ContactSearchActivity.RESULT_NUMBER);if(n!=null&&!n.isEmpty())placeCall(n);
         }
     }
 
-    @Override public void openContactSearch() {
-        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
-            requestCorePermissionsSafely();
-            Toast.makeText(this, "Allow Contacts permission, then tap Search again.", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        try {
-            startActivityForResult(new Intent(this, ContactSearchActivity.class), CONTACT_SEARCH_REQ);
-        } catch (Throwable error) {
-            Toast.makeText(this, "Could not open contact search: " + shortMessage(error), Toast.LENGTH_LONG).show();
-        }
+    @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults){super.onRequestPermissionsResult(requestCode,permissions,grantResults);if(requestCode==PERM_CORE_REQ||requestCode==PERM_DIALER_REQ)refreshDeviceDataSafely();}
+
+    private void refreshDeviceDataSafely(){
+        if(phoneView==null)return;
+        try{phoneView.setRecentCalls(readRecentCalls());}catch(Throwable e){phoneView.setRecentCalls(new ArrayList<>());}
+        try{phoneView.setContacts(readContacts());}catch(Throwable e){phoneView.setContacts(new ArrayList<>());}
     }
 
-    @Override public void openSettings() {
-        final int pad = dp(18);
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(pad, pad / 2, pad, 0);
-
-        TextView version = new TextView(this);
-        version.setText("NetWatch Phone " + BuildConfig.VERSION_NAME + "\nSigned GitHub update channel");
-        version.setPadding(0, 0, 0, pad / 2);
-        box.addView(version, new LinearLayout.LayoutParams(-1, -2));
-
-        TextView dialerState = new TextView(this);
-        dialerState.setText(holdsDialerRole() ? "✓ NetWatch is the default phone app" : "⚠ NetWatch is not the default phone app");
-        dialerState.setPadding(0, 0, 0, pad / 2);
-        box.addView(dialerState, new LinearLayout.LayoutParams(-1, -2));
-
-        EditText api = new EditText(this);
-        api.setSingleLine(true);
-        api.setHint("Contact-center API");
-        api.setText(AppConfig.getContactCenterUrl(this));
-        box.addView(api, new LinearLayout.LayoutParams(-1, -2));
-
-        Button update = new Button(this);
-        update.setText("Check GitHub for updates");
-        update.setOnClickListener(v -> GitHubUpdater.check(this, true));
-        box.addView(update, new LinearLayout.LayoutParams(-1, -2));
-
-        Button dialer = new Button(this);
-        dialer.setText("Make NetWatch the default phone app");
-        dialer.setOnClickListener(v -> requestRoleSafely(RoleManager.ROLE_DIALER, ROLE_DIALER_REQ));
-        box.addView(dialer, new LinearLayout.LayoutParams(-1, -2));
-
-        Button screening = new Button(this);
-        screening.setText("Enable NetWatch call screening");
-        screening.setOnClickListener(v -> requestRoleSafely(RoleManager.ROLE_CALL_SCREENING, ROLE_SCREEN_REQ));
-        box.addView(screening, new LinearLayout.LayoutParams(-1, -2));
-
-        new AlertDialog.Builder(this)
-                .setTitle("NetWatch Phone")
-                .setMessage("Phone → your API → your contact center.")
-                .setView(box)
-                .setNegativeButton("Close", null)
-                .setPositiveButton("Save API", (d, which) -> {
-                    boolean ok = AppConfig.setContactCenterUrl(this, api.getText().toString());
-                    Toast.makeText(this, ok ? "API home saved" : "Invalid URL", Toast.LENGTH_SHORT).show();
-                }).show();
-    }
-
-    private void requestRoleSafely(String role, int requestCode) {
-        try {
-            RoleManager rm = (RoleManager) getSystemService(Context.ROLE_SERVICE);
-            if (rm == null || !rm.isRoleAvailable(role)) {
-                Toast.makeText(this, "That Android role is unavailable.", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            if (rm.isRoleHeld(role)) {
-                if (RoleManager.ROLE_DIALER.equals(role)) requestDialerPermissionsSafely();
-                Toast.makeText(this, "Already enabled", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            startActivityForResult(rm.createRequestRoleIntent(role), requestCode);
-        } catch (Throwable error) {
-            Toast.makeText(this, "Role request failed: " + shortMessage(error), Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private boolean holdsDialerRole() {
-        try {
-            RoleManager rm = (RoleManager) getSystemService(Context.ROLE_SERVICE);
-            return rm != null && rm.isRoleAvailable(RoleManager.ROLE_DIALER) && rm.isRoleHeld(RoleManager.ROLE_DIALER);
-        } catch (Throwable ignored) {
-            return false;
-        }
-    }
-
-    private void requestCorePermissionsSafely() {
-        try {
-            String[] p = { Manifest.permission.CALL_PHONE, Manifest.permission.READ_CONTACTS };
-            ArrayList<String> missing = new ArrayList<>();
-            for (String perm : p) if (checkSelfPermission(perm) != PackageManager.PERMISSION_GRANTED) missing.add(perm);
-            if (!missing.isEmpty()) requestPermissions(missing.toArray(new String[0]), PERM_CORE_REQ);
-            if (holdsDialerRole()) requestDialerPermissionsSafely();
-        } catch (Throwable error) {
-            Toast.makeText(this, "Permission setup skipped: " + shortMessage(error), Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void requestDialerPermissionsSafely() {
-        try {
-            String[] p = {
-                    Manifest.permission.READ_PHONE_STATE,
-                    Manifest.permission.READ_CALL_LOG,
-                    Manifest.permission.WRITE_CALL_LOG,
-                    Manifest.permission.ANSWER_PHONE_CALLS
-            };
-            ArrayList<String> missing = new ArrayList<>();
-            for (String perm : p) if (checkSelfPermission(perm) != PackageManager.PERMISSION_GRANTED) missing.add(perm);
-            if (!missing.isEmpty()) requestPermissions(missing.toArray(new String[0]), PERM_DIALER_REQ);
-        } catch (Throwable error) {
-            Toast.makeText(this, "Dialer permissions skipped: " + shortMessage(error), Toast.LENGTH_LONG).show();
-        }
-    }
-
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == ROLE_DIALER_REQ) {
-            if (holdsDialerRole()) {
-                requestDialerPermissionsSafely();
-                refreshDeviceDataSafely();
-                final String n = pendingNumber;
-                pendingNumber = null;
-                if (n != null && !n.isEmpty()) phoneView.postDelayed(() -> placeCall(n), 300);
-            } else {
-                pendingNumber = null;
-                Toast.makeText(this, "NetWatch was not selected as the default phone app, so the call was not handed to Google Phone.", Toast.LENGTH_LONG).show();
-            }
-            return;
-        }
-        if (requestCode == CONTACT_SEARCH_REQ && resultCode == RESULT_OK && data != null) {
-            String number = data.getStringExtra(ContactSearchActivity.RESULT_NUMBER);
-            if (number != null && !number.trim().isEmpty()) placeCall(number);
-        }
-    }
-
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == PERM_CORE_REQ || requestCode == PERM_DIALER_REQ) {
-            refreshDeviceDataSafely();
-            if (pendingNumber != null && holdsDialerRole() && checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
-                String n = pendingNumber;
-                pendingNumber = null;
-                placeCall(n);
-            }
-        }
-    }
-
-    private void refreshDeviceDataSafely() {
-        if (phoneView == null) return;
-        try { phoneView.setRecentCalls(readRecentCalls()); } catch (Throwable ignored) { phoneView.setRecentCalls(new ArrayList<>()); }
-        try { phoneView.setContacts(readContacts()); } catch (Throwable ignored) { phoneView.setContacts(new ArrayList<>()); }
-    }
-
-    private List<GlassPhoneView.RecentCall> readRecentCalls() {
-        List<GlassPhoneView.RecentCall> out = new ArrayList<>();
-        if (checkSelfPermission(Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) return out;
-        String[] projection = { CallLog.Calls.NUMBER, CallLog.Calls.CACHED_NAME, CallLog.Calls.TYPE, CallLog.Calls.DATE };
-        try (Cursor c = getContentResolver().query(CallLog.Calls.CONTENT_URI, projection, null, null, CallLog.Calls.DATE + " DESC")) {
-            if (c == null) return out;
-            int numberCol = c.getColumnIndexOrThrow(CallLog.Calls.NUMBER);
-            int nameCol = c.getColumnIndexOrThrow(CallLog.Calls.CACHED_NAME);
-            int typeCol = c.getColumnIndexOrThrow(CallLog.Calls.TYPE);
-            int dateCol = c.getColumnIndexOrThrow(CallLog.Calls.DATE);
-            while (c.moveToNext() && out.size() < 100) {
-                String number = c.getString(numberCol);
-                String name = c.getString(nameCol);
-                int type = c.getInt(typeCol);
-                long date = c.getLong(dateCol);
-                boolean missed = type == CallLog.Calls.MISSED_TYPE || type == CallLog.Calls.REJECTED_TYPE;
-                String direction = type == CallLog.Calls.OUTGOING_TYPE ? "↗ Mobile" : (missed ? "Missed" : "↙ Mobile");
-                out.add(new GlassPhoneView.RecentCall(name, number, direction + " • " + friendlyTime(date), missed));
-            }
-        } catch (Throwable ignored) { }
+    private List<GlassPhoneView.RecentCall> readRecentCalls(){
+        List<GlassPhoneView.RecentCall> out=new ArrayList<>();
+        if(checkSelfPermission(Manifest.permission.READ_CALL_LOG)!=PackageManager.PERMISSION_GRANTED)return out;
+        String[] projection={CallLog.Calls.NUMBER,CallLog.Calls.CACHED_NAME,CallLog.Calls.TYPE,CallLog.Calls.DATE};
+        try(Cursor c=getContentResolver().query(CallLog.Calls.CONTENT_URI,projection,null,null,CallLog.Calls.DATE+" DESC")){
+            if(c==null)return out;int nc=c.getColumnIndexOrThrow(CallLog.Calls.NUMBER),namec=c.getColumnIndexOrThrow(CallLog.Calls.CACHED_NAME),tc=c.getColumnIndexOrThrow(CallLog.Calls.TYPE),dc=c.getColumnIndexOrThrow(CallLog.Calls.DATE);
+            while(c.moveToNext()&&out.size()<100){String number=c.getString(nc),name=c.getString(namec);int type=c.getInt(tc);long date=c.getLong(dc);boolean missed=type==CallLog.Calls.MISSED_TYPE||type==CallLog.Calls.REJECTED_TYPE;String direction=type==CallLog.Calls.OUTGOING_TYPE?"↗ Mobile":(missed?"Missed":"↙ Mobile");out.add(new GlassPhoneView.RecentCall(name,number,direction+" • "+friendlyTime(date),missed));}
+        }catch(Throwable ignored){}
         return out;
     }
 
-    private List<GlassPhoneView.ContactItem> readContacts() {
-        List<GlassPhoneView.ContactItem> out = new ArrayList<>();
-        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return out;
-        String[] projection = { ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER };
-        try (Cursor c = getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                projection, null, null, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " COLLATE NOCASE ASC")) {
-            if (c == null) return out;
-            int nameCol = c.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);
-            int numberCol = c.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER);
-            String last = null;
-            while (c.moveToNext()) {
-                String name = c.getString(nameCol);
-                String number = c.getString(numberCol);
-                if (name == null || number == null) continue;
-                String key = name + "|" + number;
-                if (key.equals(last)) continue;
-                last = key;
-                out.add(new GlassPhoneView.ContactItem(name, number));
-            }
-        } catch (Throwable ignored) { }
+    private List<GlassPhoneView.ContactItem> readContacts(){
+        List<GlassPhoneView.ContactItem> out=new ArrayList<>();
+        if(checkSelfPermission(Manifest.permission.READ_CONTACTS)!=PackageManager.PERMISSION_GRANTED)return out;
+        String[] projection={ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,ContactsContract.CommonDataKinds.Phone.NUMBER};
+        try(Cursor c=getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,projection,null,null,ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME+" COLLATE NOCASE ASC")){
+            if(c==null)return out;int namec=c.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME),nc=c.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER);HashSet<String> seen=new HashSet<>();
+            while(c.moveToNext()){String name=c.getString(namec),number=c.getString(nc);if(name==null||number==null)continue;String key=name+"|"+number;if(!seen.add(key))continue;out.add(new GlassPhoneView.ContactItem(name,number));}
+        }catch(Throwable ignored){}
         return out;
     }
 
-    private String friendlyTime(long millis) {
-        long age = System.currentTimeMillis() - millis;
-        if (age >= 0 && age < 24L * 60L * 60L * 1000L)
-            return new SimpleDateFormat("h:mm a", Locale.getDefault()).format(new Date(millis));
-        if (age >= 0 && age < 48L * 60L * 60L * 1000L) return "Yesterday";
-        return new SimpleDateFormat("MMM d", Locale.getDefault()).format(new Date(millis));
-    }
+    private String formatSunTime(String iso){if(iso==null||iso.isEmpty())return "—";int t=iso.indexOf('T');return t>=0&&t+1<iso.length()?iso.substring(t+1):iso;}
+    private String friendlyTime(long millis){long age=System.currentTimeMillis()-millis;if(age>=0&&age<24L*60L*60L*1000L)return new SimpleDateFormat("h:mm a",Locale.getDefault()).format(new Date(millis));if(age>=0&&age<48L*60L*60L*1000L)return"Yesterday";return new SimpleDateFormat("EEE",Locale.getDefault()).format(new Date(millis));}
 
-    private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
-    private static String shortMessage(Throwable t) {
-        String m = t.getMessage();
-        return (m == null || m.trim().isEmpty()) ? t.getClass().getSimpleName() : m;
-    }
+    private void showEmergencyUi(Throwable problem){LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(24),dp(24),dp(24),dp(24));root.setBackgroundColor(Color.rgb(8,20,34));TextView t=new TextView(this);t.setText("NetWatch Phone safe mode\n\n"+problem.getClass().getSimpleName()+": "+String.valueOf(problem.getMessage()));t.setTextColor(Color.WHITE);t.setTextSize(18);root.addView(t);Button b=new Button(this);b.setText("Open NetWatch settings");b.setOnClickListener(v->openSettings());root.addView(b);setContentView(root);}
+    private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
+    private static String shortMessage(Throwable t){String m=t.getMessage();return m==null||m.trim().isEmpty()?t.getClass().getSimpleName():m;}
 }
