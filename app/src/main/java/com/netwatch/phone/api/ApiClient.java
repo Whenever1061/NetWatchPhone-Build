@@ -32,6 +32,22 @@ public final class ApiClient {
         return new ScreenDecision(action,response.optString("display_name",""),response.optString("reason",""),response.optString("greeting",""));
     }
 
+    public JSONObject lookupCallerIntel(String number)throws Exception{
+        JSONObject body=new JSONObject();
+        body.put("number",number==null?"":number);
+        body.put("client","netwatch-phone");
+        body.put("client_version",BuildConfig.VERSION_NAME);
+        return post("/v1/caller/intel",body,3200);
+    }
+
+    public JSONObject saveCallerCorrection(String number,String name)throws Exception{
+        JSONObject body=new JSONObject();
+        body.put("number",number==null?"":number);
+        body.put("name",name==null?"":name);
+        body.put("client_version",BuildConfig.VERSION_NAME);
+        return post("/v1/caller/correct",body,2600);
+    }
+
     public JSONObject postCallEvent(String event,String number)throws Exception{
         JSONObject body=new JSONObject();
         body.put("event",event);body.put("number",number==null?"":number);body.put("client_version",BuildConfig.VERSION_NAME);
