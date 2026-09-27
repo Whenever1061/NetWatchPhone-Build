@@ -47,6 +47,7 @@
 
         <activity android:name=".ui.ContactSearchActivity" android:exported="false" />
         <activity android:name=".ui.CallerProfileActivity" android:exported="false" />
+        <activity android:name=".ui.RingtonePackActivity" android:exported="false" />
         <activity android:name=".ui.UpdateCenterActivity" android:exported="false" />
 
         <activity
