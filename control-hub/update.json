@@ -1,0 +1,10 @@
+{
+  "app": "NetWatch Control Hub",
+  "version": "0.5.4",
+  "channel": "stable",
+  "type": "patch",
+  "url": "https://raw.githubusercontent.com/Whenever1061/NetWatchPhone-Build/main/control-hub/patches/NetWatch-Control-Hub-v0.5.3-to-v0.5.4.sh",
+  "sha256": "a3c4f49ee12900852507fdfaa3beb186639f38cfafe85cf0fc3c9dd8b77ca58f",
+  "notes": "Adds the built-in GitHub update channel and a live local-weather icon in the top command bar. Weather refreshes automatically and can be refreshed by clicking the weather pill.",
+  "publishedAt": "2026-09-29T17:15:00-06:00"
+}
