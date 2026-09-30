@@ -1,10 +1,10 @@
 {
   "app": "NetWatch Control Hub",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "channel": "stable",
   "type": "patch",
-  "url": "https://raw.githubusercontent.com/Whenever1061/NetWatchPhone-Build/main/control-hub/patches/NetWatch-Control-Hub-v0.5.3-to-v0.5.4.sh",
-  "sha256": "a3c4f49ee12900852507fdfaa3beb186639f38cfafe85cf0fc3c9dd8b77ca58f",
-  "notes": "Adds the built-in GitHub update channel and a live local-weather icon in the top command bar. Weather refreshes automatically and can be refreshed by clicking the weather pill.",
-  "publishedAt": "2026-09-29T17:15:00-06:00"
+  "url": "https://raw.githubusercontent.com/Whenever1061/NetWatchPhone-Build/main/control-hub/patches/NetWatch-Control-Hub-v0.5.4-to-v0.5.5-Animated-Weather.patch.sh",
+  "sha256": "c941459e55b214725c868cac90c66b42f82fbd8be487085b64044f93028a774a",
+  "notes": "Turns the NetWatch System Control Hub hero into a live animated weather scene using the current local conditions. Clear skies show sun or moon, cloudy conditions move clouds, rain animates precipitation, storms flash lightning, snow falls, fog drifts, and the panel shows location, temperature, feels-like, wind, cloud cover, and last update time.",
+  "publishedAt": "2026-09-29T18:23:00-06:00"
 }
