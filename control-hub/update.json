@@ -1,10 +1,10 @@
 {
   "app": "NetWatch Control Hub",
-  "version": "0.5.9",
+  "version": "0.5.10",
   "channel": "stable",
   "type": "patch",
-  "url": "https://raw.githubusercontent.com/Whenever1061/NetWatchPhone-Build/main/control-hub/patches/NetWatch-Control-Hub-v0.5.8-to-v0.5.9-Live-Metrics-Weather.patch.sh",
-  "sha256": "460109f49afad8a1350485d035c4b4149c5b72e5f2c3778e0d5a43831e5d83d1",
-  "notes": "Repairs live network telemetry with separate downstream and upstream values plus aurora trails; reads hardware temperature directly from Linux hwmon/thermal sensors and adds a thermostat indicator; turns uptime into an Aurora Borealis clock; replaces CSS cartoon weather with Canvas2D volumetric clouds, depth rain, windshield droplets, fog and irregular lightning; and bootstraps Snap and pipx through PolicyKit when needed.",
-  "publishedAt": "2026-09-29T20:12:00-06:00"
+  "url": "https://raw.githubusercontent.com/Whenever1061/NetWatchPhone-Build/main/control-hub/patches/NetWatch-Control-Hub-v0.5.9-to-v0.5.10-Authoritative-UI-Fix.patch.sh",
+  "sha256": "382eabb10681e24a4530e7d369e63660554e1b61a8638fed18b3ae0e66e8e28a",
+  "notes": "Corrective UI release: makes one authoritative weather hero and one health gauge, removes legacy stacked weather/aurora overlays, clips cosmic telemetry inside its own metric cards, restores separate live downstream/upstream readings, adds a hardware-sensor thermometer, turns the uptime tile into an Aurora system clock while preserving uptime text, and uses a single Canvas atmospheric renderer for moving clouds, rain, droplets, fog and storm flashes. Existing Snap and pipx setup from 0.5.9 is preserved.",
+  "publishedAt": "2026-09-29T20:31:00-06:00"
 }
