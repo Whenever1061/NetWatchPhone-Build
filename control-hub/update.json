@@ -1,10 +1,10 @@
 {
   "app": "NetWatch Control Hub",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "channel": "stable",
   "type": "patch",
-  "url": "https://raw.githubusercontent.com/Whenever1061/NetWatchPhone-Build/main/control-hub/patches/NetWatch-Control-Hub-v0.5.4-to-v0.5.5-Animated-Weather.patch.sh",
-  "sha256": "c941459e55b214725c868cac90c66b42f82fbd8be487085b64044f93028a774a",
-  "notes": "Turns the NetWatch System Control Hub hero into a live animated weather scene using the current local conditions. Clear skies show sun or moon, cloudy conditions move clouds, rain animates precipitation, storms flash lightning, snow falls, fog drifts, and the panel shows location, temperature, feels-like, wind, cloud cover, and last update time.",
-  "publishedAt": "2026-09-29T18:23:00-06:00"
+  "url": "https://raw.githubusercontent.com/Whenever1061/NetWatchPhone-Build/main/control-hub/patches/NetWatch-Control-Hub-v0.5.5-to-v0.5.6-Real-Weather-Hero.patch.sh",
+  "sha256": "f866d4634ae1d4259acd2ce010f504bfa7c04a46c8ce6e97bb19dc1982195ce9",
+  "notes": "Fixes the weather hero overlap, separates weather information from system health, adds moving layered clouds, sun and moon scenes, drizzle/rain windshield effects, storm lightning, fog, snow, and fixes the local updater chooser so .sh patch files are staged as patches instead of being sent to unzip.",
+  "publishedAt": "2026-09-29T18:58:00-06:00"
 }
