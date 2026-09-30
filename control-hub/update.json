@@ -1,10 +1,10 @@
 {
   "app": "NetWatch Control Hub",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "channel": "stable",
   "type": "patch",
-  "url": "https://raw.githubusercontent.com/Whenever1061/NetWatchPhone-Build/main/control-hub/patches/NetWatch-Control-Hub-v0.5.6-to-v0.5.7-Aurora-Performance.patch.sh",
-  "sha256": "3396ae0af5bf731bffcffd14452f319da89782d395c4c73ef5a6c53985faffaf",
-  "notes": "Adds live Aurora Borealis performance visuals: moving glass aurora bubbles inside CPU, memory, storage, network and temperature cards; animated aurora data ribbons in place of plain little change lines; activity-reactive glow and motion; a subtle aurora wash across the Live Performance area; reduced-motion support; and automatic backups before installation.",
-  "publishedAt": "2026-09-29T19:04:00-06:00"
+  "url": "https://raw.githubusercontent.com/Whenever1061/NetWatchPhone-Build/main/control-hub/patches/NetWatch-Control-Hub-v0.5.7-to-v0.5.8-Cosmic-Sparklines-Weather-Fix.patch.sh",
+  "sha256": "7374e681a477b36418cc6d77dc9e3d2b674f35a04f0e69fcc8ccae7763375f11",
+  "notes": "Fixes the weather hero so it replaces the original top-left hero content instead of overlapping it. Removes the v0.5.7 card-wide aurora effect and keeps the CPU, memory, storage, network and temperature tiles as clean glass. The real live telemetry sparklines now carry an aurora/cosmic gradient, bright leading point and fading animated tail that flares whenever new data arrives. Includes backups and reduced-motion support.",
+  "publishedAt": "2026-09-29T19:38:54-06:00"
 }
