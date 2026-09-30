@@ -1,10 +1,10 @@
 {
   "app": "NetWatch Control Hub",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "channel": "stable",
   "type": "patch",
-  "url": "https://raw.githubusercontent.com/Whenever1061/NetWatchPhone-Build/main/control-hub/patches/NetWatch-Control-Hub-v0.5.5-to-v0.5.6-Real-Weather-Hero.patch.sh",
-  "sha256": "f866d4634ae1d4259acd2ce010f504bfa7c04a46c8ce6e97bb19dc1982195ce9",
-  "notes": "Fixes the weather hero overlap, separates weather information from system health, adds moving layered clouds, sun and moon scenes, drizzle/rain windshield effects, storm lightning, fog, snow, and fixes the local updater chooser so .sh patch files are staged as patches instead of being sent to unzip.",
-  "publishedAt": "2026-09-29T18:58:00-06:00"
+  "url": "https://raw.githubusercontent.com/Whenever1061/NetWatchPhone-Build/main/control-hub/patches/NetWatch-Control-Hub-v0.5.6-to-v0.5.7-Aurora-Performance.patch.sh",
+  "sha256": "3396ae0af5bf731bffcffd14452f319da89782d395c4c73ef5a6c53985faffaf",
+  "notes": "Adds live Aurora Borealis performance visuals: moving glass aurora bubbles inside CPU, memory, storage, network and temperature cards; animated aurora data ribbons in place of plain little change lines; activity-reactive glow and motion; a subtle aurora wash across the Live Performance area; reduced-motion support; and automatic backups before installation.",
+  "publishedAt": "2026-09-29T19:04:00-06:00"
 }
